@@ -33,3 +33,9 @@ jobs:
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: |
           python main.py
+      - name: Upload Generated Posts
+        uses: actions/upload-artifact@v4
+        with:
+          name: HiddenDevTools-Posts
+          path: output/
+          if-no-files-found: error
