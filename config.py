@@ -134,8 +134,8 @@ DIFFICULTY = {
 }
 
 RATING = {
-    "x": 276,
-    "y": 795,
+    "x": 260,
+    "y": 803.7,
     "font_size": 23.5,
 }
 
@@ -152,3 +152,12 @@ WHY_IT_MATTERS = {
 # ==========================================================
 
 SPREADSHEET_ID = "1IyjUOGOoOqsiLoNiza9B9wvkeQLgXCd_tYeTFlYfEUA"
+
+# ==========================================================
+# Google Sheet Column Letters
+# ==========================================================
+
+STATUS_COLUMN = "M"
+POST_COLUMN = "N"
+GENERATED_AT_COLUMN = "O"
+GENERATION_ID_COLUMN = "P"

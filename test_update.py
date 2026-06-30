@@ -3,10 +3,10 @@ from sheet_api import open_sheet
 ws = open_sheet()
 
 ws.acell("R2").value
-
-ws.update_acell(
-    "R2",
-    "Hello"
+update_cell(
+    row_number,
+    STATUS_COLUMN,
+    status
 )
 
 print("✅ Updated successfully!")

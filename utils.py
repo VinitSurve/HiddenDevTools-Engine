@@ -135,3 +135,39 @@ def print_step(message: str):
 
 def print_success(message: str):
     print(f"✓ {message}")
+
+import os
+import re
+
+
+def get_next_post_name(output_dir):
+
+    max_number = 0
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    for folder in os.listdir(output_dir):
+
+        if not os.path.isdir(
+            os.path.join(output_dir, folder)
+        ):
+            continue
+
+        match = re.match(
+            r"Post_(\d+)$",
+            folder
+        )
+
+        if match:
+
+            number = int(
+                match.group(1)
+            )
+
+            max_number = max(
+                max_number,
+                number
+            )
+
+    return f"Post_{max_number + 1:03d}"
