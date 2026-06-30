@@ -1,10 +1,11 @@
-name: Test Engine
+name: Generate HiddenDevTools Post
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+
+  generate:
 
     runs-on: ubuntu-latest
 
@@ -23,7 +24,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Test Python
+      - name: Create Google Credentials
         run: |
-          python --version
-          python -c "print('GitHub Actions is working!')"
+          echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT }}' > service_account.json
+
+      - name: Run Generator
+        env:
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+        run: |
+          python main.py

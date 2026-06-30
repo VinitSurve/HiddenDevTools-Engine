@@ -1,3 +1,5 @@
+import os
+
 # ==========================================================
 # Canvas
 # ==========================================================
@@ -151,7 +153,14 @@ WHY_IT_MATTERS = {
 # Google Sheets API
 # ==========================================================
 
-SPREADSHEET_ID = "1IyjUOGOoOqsiLoNiza9B9wvkeQLgXCd_tYeTFlYfEUA"
+
+
+SERVICE_ACCOUNT_FILE = "service_account.json"
+
+SPREADSHEET_ID = os.getenv(
+    "SPREADSHEET_ID",
+    "1IyjUOGOoOqsiLoNiza9B9wvkeQLgXCd_tYeTFlYfEUA"
+)
 
 # ==========================================================
 # Google Sheet Column Letters
