@@ -78,58 +78,58 @@ COLOR_SLIDE_NUM = (30, 41, 59)
 # ==========================================================
 
 SLIDE_NUMBER = {
-    "x": 157,
-    "y": 44,
-    "font_size": 28,
+    "x": 141,
+    "y": 46,
+    "font_size": 26,
 }
 
 REPO_NAME = {
     "x": 60,
-    "y": 196,
+    "y": 210,
     "max_width": 640,
     "font_size": 75,
 }
 
 REPO_URL = {
-    "x": 131,
-    "y": 318,
+    "x": 111,
+    "y": 322,
     "max_width": 640,
     "font_size": 32,
 }
 
 DESCRIPTION = {
-    "x": 748,
-    "y": 256,
+    "x": 736,
+    "y": 476,
     "max_width": 390,
     "max_height": 140,
-    "font_size": 24,
+    "font_size": 23,
 }
 
 BEST_FOR = [
     {
         "x": 785,
-        "y": 487,
+        "y": 718,
         
     },
     {
         "x": 785,
-        "y": 525,
+        "y": 757,
     },
     {
         "x": 785,
-        "y": 565,
+        "y": 798,
     },
 ]
 
 PRICING = {
-    "center_x": 766,
-    "center_y": 730,
+    "center_x": 793,
+    "center_y": 995,
     "font_size": 30,
 }
 
 DIFFICULTY = {
-    "center_x": 950,
-    "center_y": 737,
+    "center_x": 979,
+    "center_y": 1003,
     "font_size": 20.3,
 }
 
@@ -140,9 +140,15 @@ RATING = {
 }
 
 WHY_IT_MATTERS = {
-    "x": 345,
-    "y": 971,
-    "max_width": 670,
+    "x": 163.5,
+    "y": 968,
+    "max_width": 390,
     "max_height": 130,
-    "font_size": 28,
+    "font_size": 22,
 }
+
+# ==========================================================
+# Google Sheets API
+# ==========================================================
+
+SPREADSHEET_ID = "1IyjUOGOoOqsiLoNiza9B9wvkeQLgXCd_tYeTFlYfEUA"

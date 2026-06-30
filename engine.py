@@ -1,3 +1,4 @@
+
 from PIL import Image, ImageDraw, ImageFont
 
 from config import (
@@ -31,7 +32,7 @@ class Engine:
         return ImageFont.truetype(path, size)
 
     # --------------------------------------------------
-    # Single line text
+    # Single Line Text
     # --------------------------------------------------
 
     def text(
@@ -47,7 +48,10 @@ class Engine:
         if text is None:
             return
 
-        font = self.get_font(size=size, bold=bold)
+        font = self.get_font(
+            size=size,
+            bold=bold
+        )
 
         self.draw.text(
             (x, y),
@@ -57,7 +61,7 @@ class Engine:
         )
 
     # --------------------------------------------------
-    # Paragraph inside fixed rectangle
+    # Paragraph
     # --------------------------------------------------
 
     def paragraph(
@@ -95,7 +99,10 @@ class Engine:
 
             for word in words:
 
-                candidate = word if current == "" else current + " " + word
+                candidate = (
+                    word if current == ""
+                    else current + " " + word
+                )
 
                 bbox = self.draw.textbbox(
                     (0, 0),
@@ -103,7 +110,9 @@ class Engine:
                     font=font
                 )
 
-                if bbox[2] <= width:
+                width_px = bbox[2] - bbox[0]
+
+                if width_px <= width:
                     current = candidate
                 else:
                     if current:
@@ -113,13 +122,18 @@ class Engine:
             if current:
                 lines.append(current)
 
-            line_height = self.draw.textbbox(
+            line_bbox = self.draw.textbbox(
                 (0, 0),
                 "Ag",
                 font=font
-            )[3]
+            )
 
-            total_height = len(lines) * (line_height + line_spacing)
+            line_height = line_bbox[3] - line_bbox[1]
+
+            total_height = (
+                len(lines) * line_height +
+                (len(lines) - 1) * line_spacing
+            )
 
             if total_height <= height:
                 break
@@ -139,6 +153,8 @@ class Engine:
 
             yy += line_height + line_spacing
 
+    # --------------------------------------------------
+    # Save
     # --------------------------------------------------
 
     def save(self, path):
