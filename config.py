@@ -1,6 +1,16 @@
 import os
 
 # ==========================================================
+# Project Paths
+# ==========================================================
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+
+FONTS_DIR = os.path.join(ASSETS_DIR, "fonts")
+
+# ==========================================================
 # Canvas
 # ==========================================================
 
@@ -58,11 +68,17 @@ COL_STATUS = "Status"
 # ==========================================================
 
 FONT_CANDIDATES_BOLD = [
-    r"E:\Vinitt\HiddenDevTools\HiddenDevTools-Engine\assets\fonts\Inter_28pt-Bold.ttf"
+    os.path.join(
+        FONTS_DIR,
+        "Inter_28pt-Bold.ttf"
+    )
 ]
 
 FONT_CANDIDATES_REGULAR = [
-    r"E:\Vinitt\HiddenDevTools\HiddenDevTools-Engine\assets\fonts\Inter_28pt-Regular.ttf"
+    os.path.join(
+        FONTS_DIR,
+        "Inter_28pt-Regular.ttf"
+    )
 ]
 
 # ==========================================================
