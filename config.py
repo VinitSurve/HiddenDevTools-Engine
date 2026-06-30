@@ -155,7 +155,10 @@ WHY_IT_MATTERS = {
 
 
 
-SERVICE_ACCOUNT_FILE = "service_account.json"
+SERVICE_ACCOUNT_FILE = os.getenv(
+    "SERVICE_ACCOUNT_FILE",
+    "service_account.json"
+)
 
 SPREADSHEET_ID = os.getenv(
     "SPREADSHEET_ID",

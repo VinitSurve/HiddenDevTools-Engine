@@ -1,6 +1,6 @@
 import gspread
 from google.oauth2.service_account import Credentials
-from config import STATUS_COLUMN
+from config import SERVICE_ACCOUNT_FILE, STATUS_COLUMN
 from datetime import datetime
 from config import SHEET_PUBHTML_URL, SHEET_PUBHTML_URL, SPREADSHEET_ID
 from config import (
@@ -24,7 +24,7 @@ SCOPES = [
 # ==========================================================
 
 creds = Credentials.from_service_account_file(
-    "credentials.json",
+    SERVICE_ACCOUNT_FILE,
     scopes=SCOPES
 )
 
