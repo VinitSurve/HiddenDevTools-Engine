@@ -1,0 +1,34 @@
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "time": 1783673672155,
+      "id": "17841445786837061",
+      "messaging": [
+        {
+          "sender": {
+            "id": "17841445786837061"
+          },
+          "recipient": {
+            "id": "1013496348275080"
+          },
+          "timestamp": 1783673671829,
+          "message": {
+            "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDQ1Nzg2ODM3MDYxOjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI1OTMwNDYyNjIxMTMwNzYzMzozMjkwMjk3MTczNTI1NTI1OTUwNTcwNzQ2MzI4NjQ1NjMyMAZDZD",
+            "attachments": [
+              {
+                "type": "ig_reel",
+                "payload": {
+                  "reel_video_id": "17896167651519459",
+                  "title": "Google just started showing Instagram Reels in search results.\nYour posts don\u2019t disappear after 48 hours anymore. They can show up on Google for years.\nIt\u2019s like your WhatsApp status suddenly becoming a hoarding on the highway. What you made for one day is now up for everyone, for years.\nTill now, social content had a two-day life. You post, it peaks, it\u2019s gone. Now a Reel can come up when someone Googles a question, months later.\nThree small changes:\n1. Say the actual question in your reel. The words people would type.\n2. Put those words in your caption too, not just hashtags.\n3. Make more reels that answer questions. Answers get searched. Jokes don\u2019t.\nYour old reels were posts. Your next ones can be property.\nEveryone else is still making content for two days. Start making it for two years.\nSave this before your next reel.\n\n[brandintegration, google search, instagram reels, seo, content strategy, marketing news, social media update, marketing india, foundersjourney, contentcreator, [google indexing instagram, reels in google search, instagram seo, social media seo, how to rank reels on google, content that lasts, evergreen content, instagram update 2026]",
+                  "url": "https://www.instagram.com/reel/Damhb_3oFxr/"
+                }
+              }
+            ],
+            "is_echo": true
+          }
+        }
+      ]
+    }
+  ]
+}

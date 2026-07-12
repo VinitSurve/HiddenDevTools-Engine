@@ -1,4 +1,5 @@
 
+# pyrefly: ignore [missing-import]
 from PIL import Image, ImageDraw, ImageFont
 
 from config import (
@@ -11,10 +12,16 @@ from config import (
 
 class Engine:
 
-    def __init__(self):
+    def __init__(
+    self,
+    template=None
+    ):
+
+        if template is None:
+            template = TEMPLATES["content"]
 
         self.image = Image.open(
-            TEMPLATES["content"]
+            template
         ).convert("RGBA")
 
         self.draw = ImageDraw.Draw(self.image)

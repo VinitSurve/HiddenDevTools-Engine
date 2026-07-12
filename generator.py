@@ -16,6 +16,8 @@ from config import *
 # Generate One Content Slide
 # ==========================================================
 
+# <migration:generate_content_slide>
+
 def generate_content_slide(
     row,
     output_path
@@ -167,10 +169,14 @@ def generate_content_slide(
 
     engine.save(output_path)
 
+    # </migration:generate_content_slide>
+
 
 # ==========================================================
 # Generate Complete Post
 # ==========================================================
+
+# <migration:generate_post>
 
 def generate_post(
     draft_rows,
@@ -203,6 +209,8 @@ def generate_post(
     )
 
     print("✓ Cover copied")
+
+# </migration:generate_post>
 
     # ------------------------------------------------------
     # Generate Content Slides

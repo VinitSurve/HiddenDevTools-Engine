@@ -1,0 +1,30 @@
+# Comprehensive Feature Matrix
+
+**Document ID:** HDT-EXEC-007  
+**Category:** Project Overview  
+**Version:** 1.0  
+**Status:** Canonical Engineering Baseline  
+**Cross-References:** [Scope](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/docs/00_Project_Overview/Scope.md), [Current Completion Percentage](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/docs/00_Project_Overview/Current_Completion_Percentage.md), [PRD](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/docs/01_Product/PRD.md)
+
+---
+
+## 1. Complete System Feature Matrix
+
+The following exhaustive feature matrix maps every operational and planned feature across all architectural subsystems, listing its exact codebase location, technical dependencies, verification method, and current completion status.
+
+| Feature ID | Subsystem | Feature Name | Codebase Location | Primary Technical Dependencies | Verification & Testing Method | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **F-101** | Ingestion | **Draft Row Discovery** | [sheet_api.py:L25-L60](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/sheet_api.py#L25-L60) | `gspread` v4, Google Sheets Service Account (`service_account.json`) | Unit test `test_sheet_api.py`; integration verification against live sheet `Developer Tools`. | `[x] Complete` |
+| **F-102** | Ingestion | **Idempotent Status Locking** | [services/sheet_service.py:L49-L71](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/services/sheet_service.py#L49-L71) | `gspread.Worksheet.update_cell()`, Google Sheets API | Verified by `developer_tools_pipeline.py` row status transition logs (`Rendering` -> `Published`). | `[x] Complete` |
+| **F-201** | Rendering | **Dynamic Canvas Typography** | [engine.py:L36-L163](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/engine.py#L36-L163) | `Pillow` TrueType font bounding box (`draw.textbbox`), `assets/fonts/Inter_28pt-*.ttf` | Unit test `test_font.py`, `test_generating.py`; visual inspection of generated PNG outputs. | `[x] Complete` |
+| **F-202** | Rendering | **9-Slide Carousel Assembly** | [renderers/developer_tools_renderer.py](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/renderers/developer_tools_renderer.py) | `Engine`, `templates/developer_tools/*.png`, `config.py` layout coordinates | Automated build pipeline generating `01_Cover.png` through `09_CTA.png` in `output/`. | `[x] Complete` |
+| **F-301** | Storage | **Parallel Multi-Threaded Upload** | [services/storage_service.py:L90-L160](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/services/storage_service.py#L90-L160) | `concurrent.futures.ThreadPoolExecutor(max_workers=3)`, `requests.post`, Supabase REST API | Verified via `test_upload.py` and structured correlation logs (`Transitioning rows -> Uploaded`). | `[x] Complete` |
+| **F-302** | Storage | **Public CDN URL Verification** | [services/storage_service.py:L162-L195](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/services/storage_service.py#L162-L195) | HTTP `HEAD` / `GET` requests (`requests.head()`, `requests.get()`) | Execution inside `developer_tools_pipeline.py` prior to Instagram API container creation. | `[x] Complete` |
+| **F-401** | Publishing | **Carousel Container Orchestration** | [services/instagram_service.py:L604-L779](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/services/instagram_service.py#L604-L779) | Meta Graph API v23.0 (`/{ig_user_id}/media`, `/{ig_user_id}/media_publish`), `INSTAGRAM_ACCESS_TOKEN` | Live execution via `main.py` / `developer_tools_pipeline.py`; verify via `GET /{media_id}`. | `[x] Complete` |
+| **F-402** | Publishing | **Automated Story Sharing** | `services/instagram_service.py` (Planned) | Meta Graph API v23.0 `/{ig_user_id}/media` (`media_type=STORIES`) | Future integration test upon pipeline completion. | `[ ] Roadmap` |
+| **F-501** | Webhooks | **HMAC-SHA256 Signature Verification** | [services/meta_webhook_service.py:L32-L63](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/services/meta_webhook_service.py#L32-L63) | Python `hmac.new(key, msg, sha256).hexdigest()`, `META_APP_SECRET`, `X-Hub-Signature-256` header | Unit test `test_webhook.py`; local Cloudflare Tunnel (`cloudflared`) live POST testing. | `[x] Complete` |
+| **F-502** | Webhooks | **Raw Payload Replay Capture** | [services/meta_webhook_service.py:L65-L83](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/services/meta_webhook_service.py#L65-L83) | Local filesystem write to `fixtures/webhooks/YYYY/MM/event_TIMESTAMP_REQ.json` | Verified during runtime audit; inspect `fixtures/webhooks/2026/07/` files. | `[x] Complete` |
+| **F-601** | Engagement | **Keyword Normalization & Matcher** | [features/engagement/keyword_matcher.py](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/features/engagement/keyword_matcher.py) | Regex stripping, `unicodedata.normalize()`, `config.ENGAGEMENT_KEYWORDS` (`DEV`, `TOOLS`, `LINK`) | Unit tests inside `tests/test_engagement.py`. | `[x] Complete` |
+| **F-602** | Engagement | **SQLite Deduplication & Locking** | [features/engagement/repository.py](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/features/engagement/repository.py) | SQLite `processed_comments` table, `INSERT OR IGNORE`, `BEGIN IMMEDIATE` claim locking | Automated race condition and deduplication tests (`test_duplicate_webhook_detection`). | `[x] Complete` |
+| **F-603** | Engagement | **Idempotent DM Worker Queue** | [features/engagement/worker.py](file:///e:/Vinitt/HiddenDevTools/HiddenDevTools-Engine/features/engagement/worker.py) | `DMWorker.process_queue()`, `InstagramService.send_message()`, exponential backoff | Automated worker retry tests (`test_worker_retry`). | `[x] Complete` |
+| **F-604** | Engagement | **Meta App Review Live Messaging** | Meta App Dashboard / Review Engine | Meta App Review approval for `instagram_manage_messages` in Advanced Access mode | Live verification by posting comment `DEV` from non-tester public Instagram account. | `[ ] Blocked` |

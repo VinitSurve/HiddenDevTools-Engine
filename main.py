@@ -7,6 +7,9 @@ Entry point for generating one complete Instagram carousel
 from the next Draft repositories in Google Sheets.
 """
 
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
+
 from config import OUTPUT_DIR
 from sheet_api import (
     get_draft_rows,
@@ -16,12 +19,25 @@ from sheet_api import (
 from generator import generate_post
 from utils import get_next_post_name
 from config import STATUS_COLUMN
+from schedule import get_today_schedule
+
+
+
+
 
 # ==========================================================
 # Main
 # ==========================================================
 
 def main():
+
+    today = get_today_schedule()
+
+    if today is None:
+
+        print("No schedule found.")
+
+        return
 
     draft_rows = get_draft_rows(limit=7)
 
