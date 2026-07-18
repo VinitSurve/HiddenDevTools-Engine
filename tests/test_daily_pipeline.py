@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 
-from config import PHASE_5A_RENDERING_ENABLED
+from config.app_config import config
 from models.niche_payloads import BasePayload, GithubRepoPayload, DeveloperToolsPayload, PromptPayload, ToolsWebsitesPayload, FreeAlternativePayload, CareerResourcePayload
 from adapters.niche_adapter import NicheAdapter
 from services.calendar_service import CalendarService
@@ -48,7 +48,7 @@ class MockWorksheet:
 @pytest.fixture
 def mock_db(monkeypatch, tmp_path):
     db_file = str(tmp_path / f"test_pub_{uuid.uuid4().hex}.db")
-    monkeypatch.setattr("config.PUBLISHING_DB_PATH", db_file)
+    monkeypatch.setattr("settings.PUBLISHING_DB_PATH", db_file)
     monkeypatch.setattr("features.publishing.repository.PUBLISHING_DB_PATH", db_file)
     monkeypatch.setattr("features.publishing.uploaded_artifact_repository.PUBLISHING_DB_PATH", db_file)
     run_publishing_migrations(db_file)
@@ -247,7 +247,7 @@ class TestScenarios18To23:
             assert not r.get("Post")
 
     def test_scenario_18_missing_cover_template_aborts_new_batch(self, empty_pub_repo, sample_github_headers, sample_7_draft_rows, monkeypatch, tmp_path, caplog):
-        monkeypatch.setattr("pipelines.daily_carousel_pipeline.PHASE_5A_RENDERING_ENABLED", True)
+        monkeypatch.setattr("pipelines.daily_carousel_pipeline.config", type("MockConfig", (), {"features": type("MockFeatures", (), {"enable_rendering": True})()})())
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
         pipe = DailyCarouselPipeline(worksheet=ws, pub_repo=empty_pub_repo, lock_path=str(tmp_path / "lock18"))
         import os
@@ -263,7 +263,7 @@ class TestScenarios18To23:
             self._assert_validation_failure(pipe, ws, mock_selector, mock_claim, mock_ws_update, caplog)
 
     def test_scenario_19_missing_content_template_aborts_new_batch(self, empty_pub_repo, sample_github_headers, sample_7_draft_rows, monkeypatch, tmp_path, caplog):
-        monkeypatch.setattr("pipelines.daily_carousel_pipeline.PHASE_5A_RENDERING_ENABLED", True)
+        monkeypatch.setattr("pipelines.daily_carousel_pipeline.config", type("MockConfig", (), {"features": type("MockFeatures", (), {"enable_rendering": True})()})())
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
         pipe = DailyCarouselPipeline(worksheet=ws, pub_repo=empty_pub_repo, lock_path=str(tmp_path / "lock19"))
         import os
@@ -279,7 +279,7 @@ class TestScenarios18To23:
             self._assert_validation_failure(pipe, ws, mock_selector, mock_claim, mock_ws_update, caplog)
 
     def test_scenario_20_missing_cta_template_aborts_new_batch(self, empty_pub_repo, sample_github_headers, sample_7_draft_rows, monkeypatch, tmp_path, caplog):
-        monkeypatch.setattr("pipelines.daily_carousel_pipeline.PHASE_5A_RENDERING_ENABLED", True)
+        monkeypatch.setattr("pipelines.daily_carousel_pipeline.config", type("MockConfig", (), {"features": type("MockFeatures", (), {"enable_rendering": True})()})())
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
         pipe = DailyCarouselPipeline(worksheet=ws, pub_repo=empty_pub_repo, lock_path=str(tmp_path / "lock20"))
         import os
@@ -295,7 +295,7 @@ class TestScenarios18To23:
             self._assert_validation_failure(pipe, ws, mock_selector, mock_claim, mock_ws_update, caplog)
 
     def test_scenario_21_invalid_cover_dimensions_aborts_new_batch(self, empty_pub_repo, sample_github_headers, sample_7_draft_rows, monkeypatch, tmp_path, caplog):
-        monkeypatch.setattr("pipelines.daily_carousel_pipeline.PHASE_5A_RENDERING_ENABLED", True)
+        monkeypatch.setattr("pipelines.daily_carousel_pipeline.config", type("MockConfig", (), {"features": type("MockFeatures", (), {"enable_rendering": True})()})())
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
         pipe = DailyCarouselPipeline(worksheet=ws, pub_repo=empty_pub_repo, lock_path=str(tmp_path / "lock21"))
         mock_img = MagicMock()
@@ -310,7 +310,7 @@ class TestScenarios18To23:
             self._assert_validation_failure(pipe, ws, mock_selector, mock_claim, mock_ws_update, caplog)
 
     def test_scenario_22_invalid_content_dimensions_aborts_new_batch(self, empty_pub_repo, sample_github_headers, sample_7_draft_rows, monkeypatch, tmp_path, caplog):
-        monkeypatch.setattr("pipelines.daily_carousel_pipeline.PHASE_5A_RENDERING_ENABLED", True)
+        monkeypatch.setattr("pipelines.daily_carousel_pipeline.config", type("MockConfig", (), {"features": type("MockFeatures", (), {"enable_rendering": True})()})())
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
         pipe = DailyCarouselPipeline(worksheet=ws, pub_repo=empty_pub_repo, lock_path=str(tmp_path / "lock22"))
         def custom_open(path):
@@ -327,7 +327,7 @@ class TestScenarios18To23:
             self._assert_validation_failure(pipe, ws, mock_selector, mock_claim, mock_ws_update, caplog)
 
     def test_scenario_23_invalid_cta_dimensions_aborts_new_batch(self, empty_pub_repo, sample_github_headers, sample_7_draft_rows, monkeypatch, tmp_path, caplog):
-        monkeypatch.setattr("pipelines.daily_carousel_pipeline.PHASE_5A_RENDERING_ENABLED", True)
+        monkeypatch.setattr("pipelines.daily_carousel_pipeline.config", type("MockConfig", (), {"features": type("MockFeatures", (), {"enable_rendering": True})()})())
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
         pipe = DailyCarouselPipeline(worksheet=ws, pub_repo=empty_pub_repo, lock_path=str(tmp_path / "lock23"))
         def custom_open(path):
@@ -460,7 +460,7 @@ class TestScenarios24To38:
         pipe = DailyCarouselPipeline(worksheet=ws, publisher_cb=failing_publisher, lock_path=str(tmp_path / "lock32"))
         res = pipe._execute_active_batch("Github Repos", "GEN_IG32", "Uploaded", ws, "github_repo")
         assert res["status"] == "ABORT_PUBLISH_FAILED"
-        assert ws.data[0]["Status"] == "Failed"
+        assert ws.data[0]["Status"] == "Draft"
 
     def test_scenario_33_instagram_carousel_container_creation_failure(self, sample_github_headers, sample_7_draft_rows, tmp_path):
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
@@ -471,7 +471,7 @@ class TestScenarios24To38:
         pipe = DailyCarouselPipeline(worksheet=ws, publisher_cb=failing_publisher, lock_path=str(tmp_path / "lock33"))
         res = pipe._execute_active_batch("Github Repos", "GEN_IG33", "Uploaded", ws, "github_repo")
         assert res["status"] == "ABORT_PUBLISH_FAILED"
-        assert ws.data[0]["Status"] == "Failed"
+        assert ws.data[0]["Status"] == "Draft"
 
     def test_scenario_34_instagram_media_publish_failure(self, sample_github_headers, sample_7_draft_rows, tmp_path):
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
@@ -482,7 +482,7 @@ class TestScenarios24To38:
         pipe = DailyCarouselPipeline(worksheet=ws, publisher_cb=failing_publisher, lock_path=str(tmp_path / "lock34"))
         res = pipe._execute_active_batch("Github Repos", "GEN_IG34", "Uploaded", ws, "github_repo")
         assert res["status"] == "ABORT_PUBLISH_FAILED"
-        assert ws.data[0]["Status"] == "Failed"
+        assert ws.data[0]["Status"] == "Draft"
 
     def test_scenario_35_instagram_publication_verification_failure(self, sample_github_headers, sample_7_draft_rows, tmp_path):
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
@@ -493,7 +493,7 @@ class TestScenarios24To38:
         pipe = DailyCarouselPipeline(worksheet=ws, publisher_cb=unverified_publisher, lock_path=str(tmp_path / "lock35"))
         res = pipe._execute_active_batch("Github Repos", "GEN_IG35", "Uploaded", ws, "github_repo")
         assert res["status"] == "ABORT_PUBLISH_FAILED"
-        assert ws.data[0]["Status"] == "Failed"
+        assert ws.data[0]["Status"] == "Draft"
 
     def test_scenario_36_sheet_final_update_failure_after_verified_publish(self, sample_github_headers, sample_7_draft_rows, mock_db, tmp_path):
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
@@ -996,7 +996,7 @@ class TestScenarios84To93:
 
     def test_scenario_91_uploaded_recovery_fewer_than_9_persisted_artifacts_aborts(self, mock_db):
         repo = UploadedArtifactRepository()
-        from config import PUBLISHING_DB_PATH
+        from settings import PUBLISHING_DB_PATH
         conn = sqlite3.connect(PUBLISHING_DB_PATH)
         for i in range(1, 9):
             conn.execute("INSERT INTO uploaded_artifacts (generation_id, slide_number, public_url, uploaded_at) VALUES (?, ?, ?, ?)",
@@ -1014,7 +1014,7 @@ class TestScenarios84To93:
 
     def test_scenario_93_uploaded_recovery_empty_public_url_aborts(self, mock_db):
         repo = UploadedArtifactRepository()
-        from config import PUBLISHING_DB_PATH
+        from settings import PUBLISHING_DB_PATH
         conn = sqlite3.connect(PUBLISHING_DB_PATH)
         for i in range(1, 10):
             url = "" if i == 5 else f"http://u/{i}"
@@ -1027,7 +1027,7 @@ class TestScenarios84To93:
 
 class TestScenarios94To97:
     def test_scenario_94_foundation_inspection_with_resume_batch_does_not_select_drafts(self, empty_pub_repo, sample_github_headers, sample_7_draft_rows, monkeypatch):
-        monkeypatch.setattr("pipelines.daily_carousel_pipeline.PHASE_5A_RENDERING_ENABLED", False)
+        monkeypatch.setattr("pipelines.daily_carousel_pipeline.config", type("MockConfig", (), {"features": type("MockFeatures", (), {"enable_rendering": False})()})())
         for r in sample_7_draft_rows:
             r["Status"] = "Generating"
             r["Generation ID"] = "GEN_INSPECT94"
@@ -1038,7 +1038,7 @@ class TestScenarios94To97:
         assert res["stage"] == "Generating"
 
     def test_scenario_95_foundation_inspection_conflict_does_not_select_drafts(self, empty_pub_repo, sample_github_headers, tmp_path, monkeypatch):
-        monkeypatch.setattr("pipelines.daily_carousel_pipeline.PHASE_5A_RENDERING_ENABLED", False)
+        monkeypatch.setattr("pipelines.daily_carousel_pipeline.config", type("MockConfig", (), {"features": type("MockFeatures", (), {"enable_rendering": False})()})())
         rows = [
             {"ID": "1", "Status": "Generating", "Generation ID": "GEN_A", "Slide Number": 2, "_row": 2},
             {"ID": "2", "Status": "Rendered", "Generation ID": "GEN_B", "Slide Number": 3, "_row": 3}
@@ -1051,7 +1051,7 @@ class TestScenarios94To97:
             mock_sel.assert_not_called()
 
     def test_scenario_96_foundation_inspection_invalid_batch_does_not_select_drafts(self, empty_pub_repo, sample_github_headers, tmp_path, monkeypatch):
-        monkeypatch.setattr("pipelines.daily_carousel_pipeline.PHASE_5A_RENDERING_ENABLED", False)
+        monkeypatch.setattr("pipelines.daily_carousel_pipeline.config", type("MockConfig", (), {"features": type("MockFeatures", (), {"enable_rendering": False})()})())
         rows = [{"ID": "1", "Status": "Generating", "Generation ID": "GEN_INV96", "Slide Number": 2, "_row": 2}]
         ws = MockWorksheet(sample_github_headers, rows)
         pipe = DailyCarouselPipeline(worksheet=ws, pub_repo=empty_pub_repo, lock_path=str(tmp_path / "lock96"))
@@ -1061,7 +1061,7 @@ class TestScenarios94To97:
             mock_sel.assert_not_called()
 
     def test_foundation_no_active_batch_inspection_only(self, empty_pub_repo, sample_github_headers, sample_7_draft_rows, monkeypatch):
-        monkeypatch.setattr("pipelines.daily_carousel_pipeline.PHASE_5A_RENDERING_ENABLED", False)
+        monkeypatch.setattr("pipelines.daily_carousel_pipeline.config", type("MockConfig", (), {"features": type("MockFeatures", (), {"enable_rendering": False})()})())
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
         pipe = DailyCarouselPipeline(worksheet=ws, pub_repo=empty_pub_repo)
         
@@ -1079,7 +1079,7 @@ class TestScenarios94To97:
                 assert r.get("Generation ID", "") == ""
 
     def test_scenario_97_foundation_precedence_a_reconciliation_capability_independent(self, sample_github_headers, monkeypatch):
-        monkeypatch.setattr("pipelines.daily_carousel_pipeline.PHASE_5A_RENDERING_ENABLED", False)
+        monkeypatch.setattr("pipelines.daily_carousel_pipeline.config", type("MockConfig", (), {"features": type("MockFeatures", (), {"enable_rendering": False})()})())
         
         pub_repo = PublicationRepository()
         pub_repo.record_publication("GEN_97", "media_97", "http://ig/97", "2026-07-12 12:00:00")

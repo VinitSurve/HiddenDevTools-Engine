@@ -20,12 +20,7 @@ from typing import List, Dict, Any, Optional
 
 import requests
 
-from config import (
-    INSTAGRAM_ACCESS_TOKEN,
-    INSTAGRAM_BUSINESS_ACCOUNT_ID,
-    FACEBOOK_PAGE_ID,
-    GRAPH_API_VERSION,
-)
+from config.app_config import config
 
 
 logger = logging.getLogger(__name__)
@@ -55,13 +50,13 @@ class InstagramService:
         api_version: Optional[str] = None,
     ):
         self.access_token = (
-            access_token or INSTAGRAM_ACCESS_TOKEN
+            access_token or config.services.instagram.access_token
         )
         self.ig_user_id = (
-            ig_user_id or INSTAGRAM_BUSINESS_ACCOUNT_ID
+            ig_user_id or config.services.instagram.business_account_id
         )
-        self.page_id = page_id or FACEBOOK_PAGE_ID
-        self.api_version = api_version or GRAPH_API_VERSION
+        self.page_id = page_id or config.services.instagram.facebook_page_id
+        self.api_version = api_version or config.services.instagram.graph_api_version
         self.base_url = (
             f"https://graph.facebook.com/{self.api_version}"
         )
@@ -601,179 +596,102 @@ class InstagramService:
     # --------------------------------------------------
 
 
+
     def publish_carousel(
         self,
+        generation_id: str,
         image_urls: List[str],
+        attempt_repo: 'InstagramPublicationAttemptRepository',
         caption: str = "",
     ) -> Dict[str, Any]:
         """
-        Full carousel publishing orchestration.
-
-        1. Create media containers for all slides
-        2. Wait for all containers to reach FINISHED
-        3. Create parent CAROUSEL container
-        4. Wait for carousel container
-        5. Publish to Instagram
-        6. Retrieve permalink
-
-        If ANY step fails, the entire publish is aborted.
-        Never publishes partial content.
-
-        Returns:
-            {
-                "success": True,
-                "media_id": str,
-                "permalink": str,
-            }
-            or
-            {
-                "success": False,
-                "error": str,
-            }
+        Full carousel publishing orchestration enforcing strict monotonic fail-closed states.
         """
-        slide_count = len(image_urls)
-
-        logger.info(
-            "=================================================="
-        )
-        logger.info(
-            f"STARTING CAROUSEL PUBLISH ({slide_count} slides)"
-        )
-        logger.info(
-            "=================================================="
-        )
-
-        if slide_count < 2 or slide_count > 10:
-            return {
-                "success": False,
-                "error": (
-                    f"Instagram carousels require 2-10 images. "
-                    f"Got {slide_count}."
-                ),
-            }
-
-        # Step 1: Create item containers
+        import requests
+        
+        attempt = attempt_repo.get_attempt(generation_id)
+        
         container_ids = []
+        creation_id = None
+        
+        if attempt:
+            state = attempt['publish_state']
+            if state in ('PUBLISH_OUTCOME_UNKNOWN', 'PUBLISHED_MEDIA_KNOWN', 'PUBLISHED_VERIFIED'):
+                logger.error(f"Cannot publish {generation_id}: Attempt state is {state}. Manual reconciliation required.")
+                return {"success": False, "error": f"Attempt state is {state}. Manual reconciliation required."}
+            elif state == 'PUBLISH_REQUESTED':
+                logger.error(f"Cannot publish {generation_id}: Attempt state is PUBLISH_REQUESTED (ambiguous crash state). Transitioning to PUBLISH_OUTCOME_UNKNOWN.")
+                attempt_repo.transition_state(generation_id, 'PUBLISH_OUTCOME_UNKNOWN')
+                return {"success": False, "error": "PUBLISH_REQUESTED found on retry. Transitioned to PUBLISH_OUTCOME_UNKNOWN."}
+            elif state == 'PUBLISH_RETRY_AUTHORIZED':
+                creation_id = attempt.get('carousel_creation_id')
+                if not creation_id:
+                    return {"success": False, "error": "PUBLISH_RETRY_AUTHORIZED missing carousel_creation_id"}
+                logger.info(f"Resuming authorized retry using existing carousel {creation_id}")
+            else:
+                return {"success": False, "error": f"Unhandled attempt state: {state}"}
+        else:
+            # Step 1: Create item containers
+            slide_count = len(image_urls)
+            if slide_count < 2 or slide_count > 10:
+                return {"success": False, "error": f"Instagram carousels require 2-10 images. Got {slide_count}."}
 
-        for idx, url in enumerate(image_urls, start=1):
-            logger.info(
-                f"Slide {idx}/{slide_count}..."
-            )
-            result = self.create_media_container(url)
+            for idx, url in enumerate(image_urls, start=1):
+                logger.info(f"Slide {idx}/{slide_count}...")
+                result = self.create_media_container(url)
+                if not result["success"]:
+                    return {"success": False, "error": f"Container creation failed for slide {idx}: {result.get('error')}"}
+                container_ids.append(result["container_id"])
 
-            if not result["success"]:
-                logger.error(
-                    f"Aborting: slide {idx} container "
-                    f"creation failed — {result.get('error')}"
-                )
-                return {
-                    "success": False,
-                    "error": (
-                        f"Container creation failed for "
-                        f"slide {idx}: {result.get('error')}"
-                    ),
-                }
+            attempt_repo.create_attempt(generation_id, container_ids)
 
-            container_ids.append(result["container_id"])
+            for idx, cid in enumerate(container_ids, start=1):
+                if not self.wait_for_container(cid):
+                    return {"success": False, "error": f"Slide {idx} container {cid} failed or timed out."}
 
-        # Step 2: Wait for all containers
-        logger.info(
-            "Waiting for all slide containers to finish "
-            "processing..."
-        )
+            # Step 3: Create carousel container
+            carousel_result = self.create_carousel(container_ids, caption=caption)
+            if not carousel_result["success"]:
+                return {"success": False, "error": f"Carousel container creation failed: {carousel_result.get('error')}"}
 
-        for idx, cid in enumerate(container_ids, start=1):
-            ready = self.wait_for_container(cid)
-            if not ready:
-                return {
-                    "success": False,
-                    "error": (
-                        f"Slide {idx} container {cid} "
-                        f"failed or timed out."
-                    ),
-                }
+            creation_id = carousel_result["creation_id"]
+            
+            attempt_repo.transition_state(generation_id, 'CAROUSEL_CREATED', carousel_creation_id=creation_id)
 
-        # Step 3: Create carousel container
-        carousel_result = self.create_carousel(
-            container_ids,
-            caption=caption,
-        )
+            if not self.wait_for_container(creation_id):
+                return {"success": False, "error": f"Carousel container {creation_id} failed or timed out."}
 
-        if not carousel_result["success"]:
-            return {
-                "success": False,
-                "error": (
-                    f"Carousel container creation failed: "
-                    f"{carousel_result.get('error')}"
-                ),
-            }
-
-        creation_id = carousel_result["creation_id"]
-
-        # Step 4: Wait for carousel container
-        logger.info(
-            "Waiting for carousel container to finish "
-            "processing..."
-        )
-
-        carousel_ready = self.wait_for_container(creation_id)
-        if not carousel_ready:
-            return {
-                "success": False,
-                "error": (
-                    f"Carousel container {creation_id} "
-                    f"failed or timed out."
-                ),
-            }
-
-        # Step 5: Publish
-        publish_result = self.publish(creation_id)
-
+        # Before media_publish
+        attempt_repo.transition_state(generation_id, 'PUBLISH_REQUESTED')
+        
+        try:
+            publish_result = self.publish(creation_id)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+            logger.error(f"Network error during media_publish: {exc}. Transitioning to PUBLISH_OUTCOME_UNKNOWN.")
+            attempt_repo.transition_state(generation_id, 'PUBLISH_OUTCOME_UNKNOWN')
+            return {"success": False, "error": f"Network error during publish: {exc}"}
+            
         if not publish_result["success"]:
-            return {
-                "success": False,
-                "error": (
-                    f"Publish failed: "
-                    f"{publish_result.get('error')}"
-                ),
-            }
+            # Depending on error, it could be ambiguous. For safety, fail closed to UNKNOWN if not specifically handled.
+            error_code = publish_result.get("error_code")
+            attempt_repo.transition_state(generation_id, 'PUBLISH_OUTCOME_UNKNOWN')
+            return {"success": False, "error": f"Publish failed: {publish_result.get('error')}"}
 
         media_id = publish_result["media_id"]
 
+        attempt_repo.transition_state(generation_id, 'PUBLISHED_MEDIA_KNOWN', media_id=media_id)
+        
         # Step 6: Verify publication & retrieve permalink
         verify_result = self.verify_publication(media_id)
-        if not verify_result.get("verified"):
-            logger.error(
-                f"Published media {media_id} could not be verified on Instagram server."
-            )
-            return {
-                "success": False,
-                "error": f"Published media {media_id} returned 200 from media_publish but could not be confirmed via GET /{media_id}.",
-            }
-
         permalink = verify_result.get("permalink", "")
         if not permalink:
             permalink = self.get_permalink(media_id)
-
-        logger.info(
-            "=================================================="
-        )
-        logger.info(
-            f"CAROUSEL PUBLISHED & VERIFIED SUCCESSFULLY"
-        )
-        logger.info(
-            f"  Media ID:  {media_id}"
-        )
-        logger.info(
-            f"  Permalink: {permalink}"
-        )
-        logger.info(
-            "=================================================="
-        )
-
+            
+        timestamp = verify_result.get("timestamp", "")
+            
         return {
             "success": True,
             "media_id": media_id,
             "permalink": permalink,
+            "timestamp": timestamp
         }
-

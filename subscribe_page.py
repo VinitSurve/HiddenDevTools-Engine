@@ -1,6 +1,6 @@
 import requests
 import sys
-from config import FACEBOOK_PAGE_ID, INSTAGRAM_ACCESS_TOKEN, GRAPH_API_VERSION
+from settings import FACEBOOK_PAGE_ID, INSTAGRAM_ACCESS_TOKEN, GRAPH_API_VERSION
 
 def subscribe_page():
     if not FACEBOOK_PAGE_ID or not INSTAGRAM_ACCESS_TOKEN:

@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, List
 
-from config import META_APP_SECRET, META_VERIFY_TOKEN
+from config.app_config import config
 from models.webhook_event import WebhookEvent
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ class MetaWebhookService:
         """
         Validates the GET verification request from Meta.
         """
-        if mode == "subscribe" and token == META_VERIFY_TOKEN:
+        if mode == "subscribe" and token == config.services.instagram.verify_token:
             logger.info("WEBHOOK_VERIFIED: Successfully verified Meta challenge.")
             return challenge
         logger.warning(f"WEBHOOK_VERIFY_FAILED: Invalid token '{token}' or mode '{mode}'.")
@@ -44,15 +44,14 @@ class MetaWebhookService:
         signature = signature_header.split("sha256=")[1]
         
         expected_hash = hmac.new(
-            key=META_APP_SECRET.encode("utf-8"),
+            key=config.services.instagram.app_secret.encode("utf-8"),
             msg=payload_bytes,
             digestmod=hashlib.sha256
         ).hexdigest()
 
         is_valid = hmac.compare_digest(expected_hash, signature)
         if not is_valid:
-            from config import is_development
-            if is_development():
+            if config.runtime.scheduler.app_env == "development":
                 logger.warning(f"WEBHOOK_SIGNATURE_MISMATCH: Expected: {expected_hash}, Got: {signature}. Bypassing for development.")
                 return True
             else:

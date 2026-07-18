@@ -12,7 +12,7 @@ import logging
 
 import requests
 
-from config import (
+from settings import (
     SHEET_PUBHTML_URL,
     COL_ID,
     COL_NAME,

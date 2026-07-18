@@ -10,7 +10,7 @@ from the next Draft repositories in Google Sheets.
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
-from config import OUTPUT_DIR
+from settings import OUTPUT_DIR
 from sheet_api import (
     get_draft_rows,
     mark_generating,
@@ -18,7 +18,7 @@ from sheet_api import (
 )
 from generator import generate_post
 from utils import get_next_post_name
-from config import STATUS_COLUMN
+from settings import STATUS_COLUMN
 from schedule import get_today_schedule
 
 

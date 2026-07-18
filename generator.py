@@ -9,7 +9,7 @@ import shutil
 
 from engine import Engine
 
-from config import *
+from settings import *
 
 
 # ==========================================================

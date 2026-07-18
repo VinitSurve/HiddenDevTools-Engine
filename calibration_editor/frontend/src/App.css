@@ -1,0 +1,316 @@
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 13px;
+  background: #0f1117;
+  color: #e2e8f0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Layout ── */
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Toolbar ── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 48px;
+  background: #1e2130;
+  border-bottom: 1px solid #2d3148;
+  flex-shrink: 0;
+}
+
+.toolbar-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #a5b4fc;
+  white-space: nowrap;
+}
+
+.status-msg {
+  flex: 1;
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Left Panel ── */
+.left-panel {
+  width: 220px;
+  min-width: 220px;
+  background: #161b27;
+  border-right: 1px solid #2d3148;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Canvas Area ── */
+.canvas-area {
+  flex: 1;
+  background: #1a1f2e;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+}
+
+/* ── Right Panel ── */
+.right-panel {
+  width: 240px;
+  min-width: 240px;
+  background: #161b27;
+  border-left: 1px solid #2d3148;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 8px;
+}
+
+/* ── Panel Sections ── */
+.panel-section {
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid #1f2538;
+}
+
+.panel-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+/* ── Niche Items ── */
+.niche-item {
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 13px;
+  transition: background 0.12s, color 0.12s;
+  margin-bottom: 2px;
+}
+
+.niche-item:hover {
+  background: #252d45;
+  color: #e2e8f0;
+}
+
+.niche-item.active {
+  background: #312e81;
+  color: #a5b4fc;
+  font-weight: 500;
+}
+
+/* ── Field Items ── */
+.field-item {
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 12px;
+  transition: background 0.1s, color 0.1s;
+  margin-bottom: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.field-item:hover {
+  background: #1f2538;
+  color: #e2e8f0;
+}
+
+.field-item.active {
+  background: #1e2d5c;
+  color: #818cf8;
+}
+
+/* ── Field Name Display ── */
+.field-name-display {
+  font-size: 13px;
+  font-weight: 500;
+  color: #e2e8f0;
+  padding: 4px 0;
+}
+
+/* ── Prop Rows ── */
+.prop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.prop-label {
+  width: 62px;
+  font-size: 12px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.prop-input {
+  flex: 1;
+  background: #0f1117;
+  border: 1px solid #2d3148;
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-family: 'Inter', monospace;
+  padding: 4px 8px;
+  width: 100%;
+  transition: border-color 0.12s;
+}
+
+.prop-input:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.prop-select {
+  width: 100%;
+  background: #0f1117;
+  border: 1px solid #2d3148;
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 12px;
+  padding: 5px 8px;
+}
+
+.prop-select:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  transition: opacity 0.12s, background 0.12s;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #4f46e5;
+  color: #fff;
+}
+
+.btn-primary:not(:disabled):hover {
+  background: #4338ca;
+}
+
+.btn-secondary {
+  background: #1f2d4a;
+  color: #93c5fd;
+  border: 1px solid #2d4470;
+}
+
+.btn-secondary:not(:disabled):hover {
+  background: #263555;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.btn-full {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ── Right panel action buttons ── */
+.right-panel-actions {
+  margin-top: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #1f2538;
+}
+
+/* ── Hint text ── */
+.hint-text {
+  font-size: 11px;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+.coords-hint {
+  padding-bottom: 12px;
+}
+
+/* ── No selection state ── */
+.no-selection {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #374151;
+  font-size: 12px;
+  padding: 24px;
+  line-height: 1.6;
+}
+
+/* ── Pillow render preview ── */
+.render-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  width: 100%;
+}
+
+.render-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 600px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #94a3b8;
+}

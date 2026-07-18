@@ -8,7 +8,7 @@ except ImportError:
     Image = None
 
 from renderers.template_registry import TemplateRegistry
-from config import PHASE_5A_RENDERING_ENABLED
+from config.app_config import config
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,17 @@ class CapabilityValidator:
             if not os.path.exists(path):
                 logger.error(f"PHASE_5A2_CAPABILITY_VALIDATION_FAILED: Missing {name} template file at '{path}'.")
                 return False
+                
+            # Hardcoded blockers for baked dynamic text as per Phase 5A.2 audit
+            basename = os.path.basename(path)
+            if basename in (
+                "Tools & Websites Content Template.png",
+                "Prompt Library Content Template.png",
+                "Free Alternatives Content template.png"
+            ):
+                logger.error(f"PHASE_5A2_CAPABILITY_VALIDATION_FAILED: Template '{path}' blocked due to baked dynamic text.")
+                return False
+                
             try:
                 with Image.open(path) as img:
                     if img.size != EXPECTED_DIMENSIONS:

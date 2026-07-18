@@ -1,9 +1,9 @@
 import gspread
 from google.oauth2.service_account import Credentials
-from config import SERVICE_ACCOUNT_FILE, STATUS_COLUMN
-from datetime import datetime
-from config import SHEET_PUBHTML_URL, SPREADSHEET_ID
-from config import (
+from settings import STATUS_COLUMN
+from config.app_config import config
+from settings import SHEET_PUBHTML_URL
+from settings import (
     STATUS_COLUMN,
     POST_COLUMN,
     GENERATED_AT_COLUMN,
@@ -30,11 +30,12 @@ SCOPES = [
 # ==========================================================
 
 creds = Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE,
+    config.services.google_sheets.service_account_file,
     scopes=SCOPES
 )
 
 client = gspread.authorize(creds)
+spreadsheet = client.open_by_key(config.services.google_sheets.spreadsheet_id)
 
 
 # ==========================================================
@@ -59,7 +60,7 @@ def open_sheet(sheet_name=None):
     global _sheets
 
     spreadsheet = client.open_by_key(
-        SPREADSHEET_ID
+        config.services.google_sheets.spreadsheet_id
     )
 
     if sheet_name is None:

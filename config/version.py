@@ -1,0 +1,5 @@
+# config/version.py
+
+ENGINE_VERSION = "1.0.0"
+PIPELINE_VERSION = "6.0.0"
+SCHEMA_VERSION = 3

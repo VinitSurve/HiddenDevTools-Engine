@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from config import ENGAGEMENT_MODE, EngagementMode
+from settings import ENGAGEMENT_MODE, EngagementMode
 from models.webhook_event import WebhookEvent
 from features.engagement.repository import DeduplicationRepository
 from features.engagement.models import ProcessedComment, DMStatus

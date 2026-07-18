@@ -1,4 +1,4 @@
-from config import DM_TEMPLATE, RESOURCE_LINK, BRAND_NAME
+from settings import DM_TEMPLATE, RESOURCE_LINK, BRAND_NAME
 
 class TemplateRenderer:
     @staticmethod

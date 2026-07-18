@@ -21,7 +21,7 @@ from sheet_api import (
     mark_failed,
 )
 
-from config import (
+from settings import (
     GENERATED_AT_COLUMN,
     GENERATION_ID_COLUMN,
     DRIVE_FOLDER_ID_COLUMN,

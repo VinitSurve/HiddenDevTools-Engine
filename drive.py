@@ -1,7 +1,7 @@
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-from config import DRIVE_ROOT_FOLDER_ID
+from settings import DRIVE_ROOT_FOLDER_ID
 from drive_auth import get_credentials
 
 

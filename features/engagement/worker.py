@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from config import MAX_DM_RETRIES, WORKER_BATCH_SIZE
+from config.app_config import config
 from features.engagement.repository import DeduplicationRepository
 from services.instagram_service import InstagramService
 from features.engagement.template_renderer import TemplateRenderer
@@ -19,7 +19,7 @@ class DMWorker:
         Scans for pending or retryable comments and dispatches DMs.
         Fully idempotent and concurrency-safe thanks to repository's claim mechanics.
         """
-        comments = self.repository.claim_pending_comments(WORKER_BATCH_SIZE)
+        comments = self.repository.claim_pending_comments(config.runtime.scheduler.worker_batch_size)
         if not comments:
             return
             
@@ -35,7 +35,7 @@ class DMWorker:
                 if result.success:
                     logger.info(f"DM_SENT: Successfully sent DM to {comment.username} for comment {comment.comment_id}")
                     self.repository.mark_sent(comment.comment_id)
-                elif result.retryable and comment.attempt_count < MAX_DM_RETRIES:
+                elif result.retryable and comment.attempt_count < config.runtime.retry.max_dm_retries:
                     next_attempt = comment.attempt_count + 1
                     # Exponential backoff: 30s, 60s, 120s...
                     backoff_seconds = 30 * (2 ** (next_attempt - 1))
@@ -60,7 +60,7 @@ class DMWorker:
             except Exception as e:
                 logger.error(f"DMWorker Exception processing comment {comment.comment_id}: {e}", exc_info=True)
                 # Fallback to retry if we crash unexpectedly before max retries
-                if comment.attempt_count < MAX_DM_RETRIES:
+                if comment.attempt_count < config.runtime.retry.max_dm_retries:
                     next_attempt = comment.attempt_count + 1
                     next_retry_at = datetime.now() + timedelta(seconds=60)
                     self.repository.mark_retry(comment.comment_id, str(e), next_attempt, next_retry_at)

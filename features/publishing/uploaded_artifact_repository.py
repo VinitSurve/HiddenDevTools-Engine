@@ -3,7 +3,7 @@ import os
 import logging
 from typing import List, Dict, Optional
 
-from config import PUBLISHING_DB_PATH
+from settings import PUBLISHING_DB_PATH
 from features.publishing.exceptions import (
     UploadedArtifactValidationError,
     UploadArtifactConflictError,

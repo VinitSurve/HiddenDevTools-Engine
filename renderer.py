@@ -1,6 +1,6 @@
 from PIL import Image, ImageDraw, ImageFont
 
-from config import (
+from settings import (
     TEMPLATES,
     REPO_NAME,
     FONT_CANDIDATES_BOLD,

@@ -3,7 +3,8 @@ import os
 from typing import Optional, List
 from datetime import datetime
 
-from config import SQLITE_DB_PATH, PROCESSING_TIMEOUT_SECONDS
+from config.app_config import config
+from settings import SQLITE_DB_PATH
 from features.engagement.models import ProcessedComment, DMStatus
 from features.engagement.migrations_runner import MigrationsRunner
 
@@ -68,16 +69,16 @@ class DeduplicationRepository:
             # BEGIN IMMEDIATE acquires a write lock early to prevent deadlocks and race conditions.
             cursor.execute("BEGIN IMMEDIATE")
             
-            cursor.execute(f"""
+            cursor.execute("""
                 SELECT comment_id, media_id, instagram_user_id, username, 
                        original_text, normalized_text, matched_keyword, status, created_at,
                        attempt_count, last_attempt_at, last_error, next_retry_at
                 FROM processed_comments
                 WHERE status = 'PENDING'
                    OR (status = 'RETRYING' AND next_retry_at <= datetime('now'))
-                   OR (status = 'PROCESSING' AND last_attempt_at <= datetime('now', '-{PROCESSING_TIMEOUT_SECONDS} seconds'))
+                   OR (status = 'PROCESSING' AND (strftime('%s', 'now') - strftime('%s', last_attempt_at)) > ?)
                 LIMIT ?
-            """, (limit,))
+            """, (config.runtime.scheduler.processing_timeout_seconds, limit))
             
             rows = cursor.fetchall()
             if not rows:

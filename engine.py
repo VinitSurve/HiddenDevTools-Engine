@@ -2,7 +2,7 @@
 # pyrefly: ignore [missing-import]
 from PIL import Image, ImageDraw, ImageFont
 
-from config import (
+from settings import (
     TEMPLATES,
     FONT_CANDIDATES_BOLD,
     FONT_CANDIDATES_REGULAR,

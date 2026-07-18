@@ -1,6 +1,6 @@
 import re
 from typing import Optional
-from config import ENGAGEMENT_KEYWORDS
+from settings import ENGAGEMENT_KEYWORDS
 
 class KeywordMatcher:
     @staticmethod

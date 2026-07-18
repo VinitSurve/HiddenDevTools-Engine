@@ -2,7 +2,7 @@ import pytest
 import os
 import sqlite3
 from datetime import datetime, timedelta
-from config import EngagementMode
+from settings import EngagementMode
 from models.webhook_event import WebhookEvent
 from features.engagement.repository import DeduplicationRepository
 from features.engagement.keyword_matcher import KeywordMatcher
@@ -32,21 +32,16 @@ class MockInstagramService:
             return MessageResult(False, None, "error", "error msg", self.retryable, 400, "{}")
 
 @pytest.fixture(autouse=True)
-def setup_db(monkeypatch):
+def setup_db(monkeypatch, tmp_path):
     """Ensure tests run against a test database"""
     import uuid
-    test_db_path = f"test_engagement_{uuid.uuid4().hex}.db"
+    test_db_path = str(tmp_path / f"test_engagement_{uuid.uuid4().hex}.db")
     monkeypatch.setattr("features.engagement.repository.SQLITE_DB_PATH", test_db_path)
     
     # Run tests
     yield
     
-    # Cleanup
-    if os.path.exists(test_db_path):
-        try:
-            os.remove(test_db_path)
-        except PermissionError:
-            pass
+    # Cleanup is automatically handled by tmp_path
 
 def create_mock_event(comment_id: str, text: str, user_id: str = "u1", media_id: str = "m1") -> WebhookEvent:
     return WebhookEvent(

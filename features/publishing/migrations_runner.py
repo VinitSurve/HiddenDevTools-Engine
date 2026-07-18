@@ -81,7 +81,7 @@ class PublishingMigrationsRunner:
 def run_publishing_migrations(db_path: Optional[str] = None) -> None:
     """Convenience function to run publishing migrations on the specified database path."""
     if db_path is None:
-        from config import PUBLISHING_DB_PATH
+        from settings import PUBLISHING_DB_PATH
         db_path = os.path.join(os.path.dirname(__file__), "..", "..", PUBLISHING_DB_PATH)
     runner = PublishingMigrationsRunner(db_path)
     runner.run()

@@ -3,7 +3,7 @@ import os
 import logging
 from typing import Optional, Dict
 
-from config import PUBLISHING_DB_PATH
+from settings import PUBLISHING_DB_PATH
 from features.publishing.exceptions import (
     PublicationConflictError,
     UploadArtifactConflictError,
@@ -27,7 +27,8 @@ class PublicationRepository:
         try:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT generation_id, media_id, permalink, published_at
+                SELECT generation_id, media_id, permalink, published_at,
+                       sheet_sync_state, sheet_sync_attempts, last_sheet_sync_at, last_sheet_sync_error
                 FROM published_generations
                 WHERE generation_id = ?
             """, (generation_id,))
@@ -38,7 +39,11 @@ class PublicationRepository:
                 "generation_id": row[0],
                 "media_id": row[1],
                 "permalink": row[2],
-                "published_at": row[3]
+                "published_at": row[3],
+                "sheet_sync_state": row[4],
+                "sheet_sync_attempts": row[5],
+                "last_sheet_sync_at": row[6],
+                "last_sheet_sync_error": row[7]
             }
         finally:
             conn.close()
@@ -86,6 +91,37 @@ class PublicationRepository:
             except Exception:
                 conn.rollback()
                 raise
+        finally:
+            conn.close()
+
+    def update_sheet_sync_state(self, generation_id: str, state: str, error: Optional[str] = None) -> None:
+        """Update the sheet sync state for a publication."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE published_generations
+                SET sheet_sync_state = ?,
+                    sheet_sync_attempts = sheet_sync_attempts + 1,
+                    last_sheet_sync_at = CURRENT_TIMESTAMP,
+                    last_sheet_sync_error = ?
+                WHERE generation_id = ?
+            """, (state, error, generation_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_pending_sheet_updates(self):
+        """Get all publications that have pending or failed sheet updates."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT generation_id, media_id, permalink, published_at, sheet_sync_attempts
+                FROM published_generations
+                WHERE sheet_sync_state IN ('PENDING', 'FAILED')
+            """)
+            return [{"generation_id": row[0], "media_id": row[1], "permalink": row[2], "published_at": row[3], "sheet_sync_attempts": row[4]} for row in cursor.fetchall()]
         finally:
             conn.close()
 

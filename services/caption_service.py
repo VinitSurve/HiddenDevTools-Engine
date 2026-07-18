@@ -6,13 +6,13 @@ Responsible for generating or resolving the Instagram post caption.
 Order of precedence:
 1. Dedicated 'Caption' column on the draft row (if present and non-empty)
 2. Today's schedule configuration from 'Publishing Calendar' (if 'Caption' configured)
-3. Fallback to DEFAULT_CAPTION_TEMPLATE from config.py
+3. Fallback to DEFAULT_CAPTION_TEMPLATE from settings.py
 """
 
 import logging
 from typing import Dict, Any, Optional
 
-from config import DEFAULT_CAPTION_TEMPLATE
+from settings import DEFAULT_CAPTION_TEMPLATE
 from schedule import get_today_schedule
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,6 @@ class CaptionService:
         except Exception as exc:
             logger.warning(f"Could not inspect Publishing Calendar for caption: {exc}")
 
-        # 3. Fallback to default template in config.py
-        logger.info("Using DEFAULT_CAPTION_TEMPLATE from config.py as fallback.")
+        # 3. Fallback to default template in settings.py
+        logger.info("Using DEFAULT_CAPTION_TEMPLATE from settings.py as fallback.")
         return DEFAULT_CAPTION_TEMPLATE

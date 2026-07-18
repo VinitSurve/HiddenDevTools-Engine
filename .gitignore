@@ -1,9 +1,14 @@
 venv/
+.venv/
 __pycache__/
+.pytest_cache/
 output/
+manifests/
+logs/
 credentials.json
 service_account.json
 oauth_client.json
 token.json
-.env
+.env*
+!.env.example
 run.txt

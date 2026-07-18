@@ -13,7 +13,7 @@ from services.resource_selector import ResourceSelector, InsufficientResourcesEr
 from services.batch_claim_service import BatchClaimService
 from renderers.template_registry import TemplateRegistry
 from adapters.niche_adapter import NicheAdapter
-from config import PHASE_5A_RENDERING_ENABLED
+from config.app_config import config
 
 try:
     from sheet_api import open_sheet
@@ -130,15 +130,30 @@ class DailyCarouselPipeline:
         if current_stage == "Uploaded":
             try:
                 pub_res = self.publisher_cb(gen_id) if self.publisher_cb else {}
+                
+                # Check for controlled fail-closed
+                if not pub_res.get("success", True):
+                    # Do not mark_failed. Preserve monotonic state (Uploaded).
+                    logger.error(f"Instagram publish aborted for {gen_id}: {pub_res.get('error')}")
+                    return {"status": "ABORT_PUBLISH_FAILED", "generation_id": gen_id, "error": pub_res.get('error')}
+                
                 media_id = pub_res.get("media_id")
                 permalink = pub_res.get("permalink")
+                pub_timestamp = pub_res.get("timestamp", "")
+                
+                if not pub_timestamp:
+                    pub_timestamp = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
+
                 if not media_id or not permalink:
-                    raise RuntimeError("Instagram publish missing media_id or permalink")
-                pub_timestamp = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
+                    # Defensive. Real failure would be caught above.
+                    logger.error("Instagram publish missing media_id or permalink")
+                    return {"status": "ABORT_PUBLISH_FAILED", "generation_id": gen_id}
+                
                 if self.pub_repo:
                     self.pub_repo.record_publication(gen_id, media_id, permalink, pub_timestamp)
             except Exception as e:
-                mark_failed(f"Instagram publish failure: {e}")
+                # Do not call mark_failed for publish failures, preserve monotonic stage.
+                logger.error(f"Instagram publish exception: {e}")
                 return {"status": "ABORT_PUBLISH_FAILED", "generation_id": gen_id}
 
             # Sheet final update after verified publish (Scenario 36)
@@ -315,7 +330,7 @@ class DailyCarouselPipeline:
                 gen_id = resolution.get("generation_id")
                 stage = resolution.get("stage")
 
-                if not PHASE_5A_RENDERING_ENABLED:
+                if not config.features.enable_rendering:
                     logger.info(f"ACTIVE_BATCH_FOUND_IN_INSPECTION_MODE: Resumed batch {gen_id} inspected at stage {stage} in Foundation Mode.")
                     return {"status": "PHASE_5A1_COMPLETE", "generation_id": gen_id, "stage": stage}
 
@@ -329,7 +344,7 @@ class DailyCarouselPipeline:
 
             # Branch 7: NO_ACTIVE_BATCH (NEW_BATCH flow)
             elif res_type == "NO_ACTIVE_BATCH":
-                if not PHASE_5A_RENDERING_ENABLED:
+                if not config.features.enable_rendering:
                     adapted = NicheAdapter.adapt_rows(sheet_name, rows)
                     try:
                         selected = ResourceSelector.select_resources(adapted)

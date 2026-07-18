@@ -2,7 +2,7 @@ import uvicorn
 from fastapi import FastAPI
 import logging
 
-from config import PORT
+from settings import PORT
 from routers.health import router as health_router
 from routers.meta_webhook import router as meta_webhook_router
 

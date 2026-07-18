@@ -17,11 +17,8 @@ from typing import List, Dict, Any, Optional
 
 import requests
 
-from config import (
-    SUPABASE_URL,
-    SUPABASE_SERVICE_ROLE_KEY,
-    SUPABASE_BUCKET,
-)
+from config.app_config import config
+from settings import SUPABASE_BUCKET
 
 
 logger = logging.getLogger(__name__)
@@ -41,45 +38,220 @@ class StorageService(ABC):
     """
 
     @abstractmethod
+
     def upload_file(
         self,
         local_path: str,
         remote_path: str,
+        generation_id: str,
+        slide_number: int,
+        attempt_repo: 'UploadAttemptRepository'
     ) -> Dict[str, Any]:
         """
-        Upload a single file.
-
-        Returns:
-            {
-                "success": bool,
-                "filename": str,
-                "remote_path": str,
-                "public_url": str,
-            }
+        Upload a single file to Supabase Storage with SHA-256 idempotency.
         """
-        pass
+        import hashlib
+        from datetime import datetime, timezone
+        from features.publishing.upload_attempt_repository import RemoteArtifactConflictError, UntrackedRemoteArtifactError
 
-    @abstractmethod
+        filename = os.path.basename(local_path)
+        content_type = self._detect_content_type(local_path)
+        url = f"{self.storage_url}/object/{self.bucket}/{remote_path}"
+        public_url = self.get_public_url(remote_path)
+
+        # Calculate local SHA-256
+        with open(local_path, 'rb') as f:
+            local_sha256 = hashlib.sha256(f.read()).hexdigest()
+
+        attempt = attempt_repo.get_attempt(generation_id, slide_number)
+        
+        # Check remote existence
+        remote_exists = self.verify_url(public_url)
+
+        if attempt:
+            if attempt['sha256_hash'] == local_sha256:
+                logger.info(f"Idempotent reuse for {filename}: SHA-256 matched.")
+                return {
+                    "success": True,
+                    "filename": filename,
+                    "remote_path": remote_path,
+                    "public_url": public_url,
+                }
+            else:
+                raise RemoteArtifactConflictError(f"SHA-256 mismatch for {filename}: local {local_sha256} vs persisted {attempt['sha256_hash']}")
+        else:
+            if remote_exists:
+                raise UntrackedRemoteArtifactError(f"Remote artifact {public_url} exists but is untracked by UploadAttemptRepository")
+        
+        logger.info(f"Uploading {filename} -> {remote_path} ({content_type})")
+
+        try:
+            with open(local_path, "rb") as f:
+                response = requests.post(
+                    url,
+                    headers=self._get_headers(content_type),
+                    data=f,
+                    timeout=60,
+                )
+
+            if response.status_code in (200, 201):
+                logger.info(f"  ✓ Uploaded {filename}")
+                
+                attempt_repo.record_attempt(
+                    generation_id=generation_id,
+                    slide_number=slide_number,
+                    remote_path=remote_path,
+                    sha256_hash=local_sha256,
+                    public_url=public_url,
+                    uploaded_at=datetime.now(timezone.utc).isoformat()
+                )
+                
+                return {
+                    "success": True,
+                    "filename": filename,
+                    "remote_path": remote_path,
+                    "public_url": public_url,
+                }
+
+            error_msg = response.text
+            try:
+                error_data = response.json()
+                error_msg = error_data.get("message", error_msg)
+            except Exception:
+                pass
+
+            logger.error(f"  ✗ Upload failed for {filename}: HTTP {response.status_code} — {error_msg}")
+            return {
+                "success": False,
+                "filename": filename,
+                "remote_path": remote_path,
+                "public_url": "",
+                "error": error_msg,
+            }
+
+        except Exception as exc:
+            logger.error(f"  ✗ Upload exception for {filename}: {exc}")
+            return {
+                "success": False,
+                "filename": filename,
+                "remote_path": remote_path,
+                "public_url": "",
+                "error": str(exc),
+            }
+
     def upload_folder(
         self,
+        generation_id: str,
         local_folder: str,
         remote_prefix: str,
+        attempt_repo: 'UploadAttemptRepository',
         max_workers: int = 3,
     ) -> Dict[str, Any]:
         """
-        Upload all files in a local folder concurrently.
-
-        Returns:
-            {
-                "success": bool,
-                "urls": List[str],   (sorted by filename)
-                "files": List[dict],
-                "error": str or None,
-            }
+        Upload all image files in a local folder concurrently.
         """
-        pass
+        if not os.path.isdir(local_folder):
+            return {
+                "success": False,
+                "urls": [],
+                "files": [],
+                "error": f"Folder not found: {local_folder}",
+            }
 
-    @abstractmethod
+        files = sorted(os.listdir(local_folder))
+        if not files:
+            return {
+                "success": False,
+                "urls": [],
+                "files": [],
+                "error": f"No files in folder: {local_folder}",
+            }
+            
+        if len(files) != 9:
+            return {
+                "success": False,
+                "urls": [],
+                "files": [],
+                "error": f"Expected exactly 9 files for carousel upload, got {len(files)}",
+            }
+
+        logger.info(
+            f"Uploading {len(files)} files from "
+            f"{local_folder} -> {remote_prefix} "
+            f"(max_workers={max_workers})"
+        )
+
+        results = []
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {}
+            for i, filename in enumerate(files):
+                slide_number = i + 1
+                local_path = os.path.join(local_folder, filename)
+                if not os.path.isfile(local_path):
+                    continue
+
+                remote_path = f"{remote_prefix}/{filename}"
+
+                future = executor.submit(
+                    self.upload_file,
+                    local_path,
+                    remote_path,
+                    generation_id,
+                    slide_number,
+                    attempt_repo
+                )
+                futures[future] = filename
+
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as exc:
+                    filename = futures[future]
+                    logger.error(f"  ✗ Thread exception for {filename}: {exc}")
+                    results.append({
+                        "success": False,
+                        "filename": filename,
+                        "remote_path": "",
+                        "public_url": "",
+                        "error": str(exc),
+                    })
+
+        results.sort(key=lambda r: r.get("filename", ""))
+
+        failed = [r for r in results if not r.get("success")]
+        if failed:
+            failed_names = [r["filename"] for r in failed]
+            logger.error(f"Upload failed for: {', '.join(failed_names)}")
+            return {
+                "success": False,
+                "urls": [],
+                "files": results,
+                "error": f"Failed uploads: {', '.join(failed_names)}",
+            }
+
+        urls = [r["public_url"] for r in results]
+        
+        # Verify all URLs reachability
+        logger.info(f"Verifying {len(urls)} public URLs reachability...")
+        for url in urls:
+            if not self.verify_url(url):
+                return {
+                    "success": False,
+                    "urls": [],
+                    "files": results,
+                    "error": f"URL reachability check failed for: {url}",
+                }
+
+        logger.info(f"All {len(urls)} files uploaded successfully and reachable.")
+        return {
+            "success": True,
+            "urls": urls,
+            "files": results,
+            "error": None,
+        }
+
     def get_public_url(
         self,
         remote_path: str,
@@ -130,8 +302,8 @@ class SupabaseStorage(StorageService):
         key: Optional[str] = None,
         bucket: Optional[str] = None,
     ):
-        self.url = (url or SUPABASE_URL).rstrip("/")
-        self.key = key or SUPABASE_SERVICE_ROLE_KEY
+        self.url = (url or config.services.supabase.url).rstrip("/")
+        self.key = key or config.services.supabase.service_role_key
         self.bucket = bucket or SUPABASE_BUCKET
         self.storage_url = f"{self.url}/storage/v1"
 
@@ -161,24 +333,52 @@ class SupabaseStorage(StorageService):
         mime_type, _ = mimetypes.guess_type(filepath)
         return mime_type or "application/octet-stream"
 
+
     def upload_file(
         self,
         local_path: str,
         remote_path: str,
+        generation_id: str,
+        slide_number: int,
+        attempt_repo: 'UploadAttemptRepository'
     ) -> Dict[str, Any]:
         """
-        Upload a single file to Supabase Storage.
-
-        Uses x-upsert: true to handle re-uploads gracefully.
+        Upload a single file to Supabase Storage with SHA-256 idempotency.
         """
+        import hashlib
+        from datetime import datetime, timezone
+        from features.publishing.upload_attempt_repository import RemoteArtifactConflictError, UntrackedRemoteArtifactError
+
         filename = os.path.basename(local_path)
         content_type = self._detect_content_type(local_path)
         url = f"{self.storage_url}/object/{self.bucket}/{remote_path}"
+        public_url = self.get_public_url(remote_path)
 
-        logger.info(
-            f"Uploading {filename} -> {remote_path} "
-            f"({content_type})"
-        )
+        # Calculate local SHA-256
+        with open(local_path, 'rb') as f:
+            local_sha256 = hashlib.sha256(f.read()).hexdigest()
+
+        attempt = attempt_repo.get_attempt(generation_id, slide_number)
+        
+        # Check remote existence
+        remote_exists = self.verify_url(public_url)
+
+        if attempt:
+            if attempt['sha256_hash'] == local_sha256:
+                logger.info(f"Idempotent reuse for {filename}: SHA-256 matched.")
+                return {
+                    "success": True,
+                    "filename": filename,
+                    "remote_path": remote_path,
+                    "public_url": public_url,
+                }
+            else:
+                raise RemoteArtifactConflictError(f"SHA-256 mismatch for {filename}: local {local_sha256} vs persisted {attempt['sha256_hash']}")
+        else:
+            if remote_exists:
+                raise UntrackedRemoteArtifactError(f"Remote artifact {public_url} exists but is untracked by UploadAttemptRepository")
+        
+        logger.info(f"Uploading {filename} -> {remote_path} ({content_type})")
 
         try:
             with open(local_path, "rb") as f:
@@ -190,8 +390,17 @@ class SupabaseStorage(StorageService):
                 )
 
             if response.status_code in (200, 201):
-                public_url = self.get_public_url(remote_path)
                 logger.info(f"  ✓ Uploaded {filename}")
+                
+                attempt_repo.record_attempt(
+                    generation_id=generation_id,
+                    slide_number=slide_number,
+                    remote_path=remote_path,
+                    sha256_hash=local_sha256,
+                    public_url=public_url,
+                    uploaded_at=datetime.now(timezone.utc).isoformat()
+                )
+                
                 return {
                     "success": True,
                     "filename": filename,
@@ -206,10 +415,7 @@ class SupabaseStorage(StorageService):
             except Exception:
                 pass
 
-            logger.error(
-                f"  ✗ Upload failed for {filename}: "
-                f"HTTP {response.status_code} — {error_msg}"
-            )
+            logger.error(f"  ✗ Upload failed for {filename}: HTTP {response.status_code} — {error_msg}")
             return {
                 "success": False,
                 "filename": filename,
@@ -219,9 +425,7 @@ class SupabaseStorage(StorageService):
             }
 
         except Exception as exc:
-            logger.error(
-                f"  ✗ Upload exception for {filename}: {exc}"
-            )
+            logger.error(f"  ✗ Upload exception for {filename}: {exc}")
             return {
                 "success": False,
                 "filename": filename,
@@ -232,17 +436,14 @@ class SupabaseStorage(StorageService):
 
     def upload_folder(
         self,
+        generation_id: str,
         local_folder: str,
         remote_prefix: str,
+        attempt_repo: 'UploadAttemptRepository',
         max_workers: int = 3,
     ) -> Dict[str, Any]:
         """
         Upload all image files in a local folder concurrently.
-
-        Uses ThreadPoolExecutor with a configurable worker limit
-        (default 3) to avoid overwhelming Supabase.
-
-        Returns URLs sorted by filename to preserve slide order.
         """
         if not os.path.isdir(local_folder):
             return {
@@ -260,6 +461,14 @@ class SupabaseStorage(StorageService):
                 "files": [],
                 "error": f"No files in folder: {local_folder}",
             }
+            
+        if len(files) != 9:
+            return {
+                "success": False,
+                "urls": [],
+                "files": [],
+                "error": f"Expected exactly 9 files for carousel upload, got {len(files)}",
+            }
 
         logger.info(
             f"Uploading {len(files)} files from "
@@ -270,12 +479,10 @@ class SupabaseStorage(StorageService):
         results = []
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-
             futures = {}
-
-            for filename in files:
+            for i, filename in enumerate(files):
+                slide_number = i + 1
                 local_path = os.path.join(local_folder, filename)
-
                 if not os.path.isfile(local_path):
                     continue
 
@@ -285,6 +492,9 @@ class SupabaseStorage(StorageService):
                     self.upload_file,
                     local_path,
                     remote_path,
+                    generation_id,
+                    slide_number,
+                    attempt_repo
                 )
                 futures[future] = filename
 
@@ -294,10 +504,7 @@ class SupabaseStorage(StorageService):
                     results.append(result)
                 except Exception as exc:
                     filename = futures[future]
-                    logger.error(
-                        f"  ✗ Thread exception for "
-                        f"{filename}: {exc}"
-                    )
+                    logger.error(f"  ✗ Thread exception for {filename}: {exc}")
                     results.append({
                         "success": False,
                         "filename": filename,
@@ -306,28 +513,33 @@ class SupabaseStorage(StorageService):
                         "error": str(exc),
                     })
 
-        # Sort by filename to preserve slide order
         results.sort(key=lambda r: r.get("filename", ""))
 
         failed = [r for r in results if not r.get("success")]
         if failed:
             failed_names = [r["filename"] for r in failed]
-            logger.error(
-                f"Upload failed for: {', '.join(failed_names)}"
-            )
+            logger.error(f"Upload failed for: {', '.join(failed_names)}")
             return {
                 "success": False,
                 "urls": [],
                 "files": results,
-                "error": (
-                    f"Failed uploads: {', '.join(failed_names)}"
-                ),
+                "error": f"Failed uploads: {', '.join(failed_names)}",
             }
 
         urls = [r["public_url"] for r in results]
-        logger.info(
-            f"All {len(urls)} files uploaded successfully."
-        )
+        
+        # Verify all URLs reachability
+        logger.info(f"Verifying {len(urls)} public URLs reachability...")
+        for url in urls:
+            if not self.verify_url(url):
+                return {
+                    "success": False,
+                    "urls": [],
+                    "files": results,
+                    "error": f"URL reachability check failed for: {url}",
+                }
+
+        logger.info(f"All {len(urls)} files uploaded successfully and reachable.")
         return {
             "success": True,
             "urls": urls,
