@@ -4,6 +4,7 @@ from renderers.developer_tools_renderer import DeveloperToolsRenderer
 from renderers.prompt_library import PromptLibraryRenderer
 from renderers.free_alternatives import FreeAlternativesRenderer
 from renderers.career_resources import CareerResourcesRenderer
+from renderers.weekly_roundup import WeeklyRoundupRenderer
 from renderers.base_renderer import BaseRenderer
 
 class RendererFactory:
@@ -16,6 +17,7 @@ class RendererFactory:
             "prompt_library": PromptLibraryRenderer,
             "free_alternatives": FreeAlternativesRenderer,
             "career_resources": CareerResourcesRenderer,
+            "weekly_roundup": WeeklyRoundupRenderer,
         }
         renderer_cls = registry.get(niche)
         if not renderer_cls:

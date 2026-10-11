@@ -1,4 +1,5 @@
 import logging
+from features.publishing.provider import RepositoryProvider
 import datetime
 import os
 import hashlib
@@ -26,19 +27,23 @@ class SchedulerOrchestrator:
         # Supabase and attempt repo might not be initialized with keys during tests
         try:
             self.storage = SupabaseStorage()
-            self.attempt_repo = UploadAttemptRepository()
+            self.attempt_repo = RepositoryProvider.get_upload_attempt_repository()
         except ValueError:
             self.storage = None
             self.attempt_repo = None
 
-    def run_today(self, override_day: int = None, mock_batch: PublishBatch = None, pipeline_context=None) -> Optional[PublishJob]:
+    def run_today(self, override_day: int = None, override_date: str = None, mock_batch: PublishBatch = None, pipeline_context=None) -> Optional[PublishJob]:
         """
         Runs the daily orchestration pipeline Phase 5B.2.
         Fails fast if any step encounters an error.
         """
         logger.info("Scheduler Started")
 
-        now = datetime.datetime.now()
+        if override_date:
+            now = datetime.datetime.strptime(override_date, "%Y-%m-%d")
+        else:
+            now = datetime.datetime.now()
+            
         date_str = now.strftime("%Y-%m-%d")
         weekday = override_day if override_day is not None else now.weekday()
         
@@ -75,13 +80,79 @@ class SchedulerOrchestrator:
         
         # 3. Render PNGs
         if pipeline_context: pipeline_context.start_stage("rendering")
+        
+        generation_dir = os.path.join(self.output_dir, batch.batch_id)
+        os.makedirs(generation_dir, exist_ok=True)
+        
         try:
             renderer = RendererFactory.get_renderer(niche, self.templates_dir)
-            os.makedirs(self.output_dir, exist_ok=True)
             # Ensure we send exactly 7 payloads
             if len(payloads) != 7:
                 payloads = [payloads[0]] * 7
-            rendered_files = renderer.render(payloads, self.output_dir, batch.batch_id)
+                
+            # Archive Payload
+            payload_path = os.path.join(generation_dir, "payload.json")
+            import json
+            with open(payload_path, "w", encoding="utf-8") as f:
+                json.dump(payloads, f, indent=2)
+                
+            logger.info(f"payload.json written to disk (Slide 2): {payloads[0]}")
+            logger.info(f"Renderer input dictionary (Slide 2): {payloads[0]}")
+                
+            # Render files
+            rendered_files = renderer.render(payloads, generation_dir, batch.batch_id)
+            
+            # Compute Hashes
+            payload_str = json.dumps(payloads, sort_keys=True)
+            payload_hash = hashlib.sha256(payload_str.encode()).hexdigest()
+            
+            layout_path = f"config/renderer_layouts/{niche}.py"
+            layout_hash = "unknown"
+            if os.path.exists(layout_path):
+                with open(layout_path, "rb") as f:
+                    layout_hash = hashlib.sha256(f.read()).hexdigest()
+                    
+            template_name = getattr(renderer, "content_template_name", "")
+            template_path = os.path.join(self.templates_dir, template_name) if template_name else ""
+            template_hash = "unknown"
+            if os.path.exists(template_path):
+                with open(template_path, "rb") as f:
+                    template_hash = hashlib.sha256(f.read()).hexdigest()
+                    
+            font_hash = "unknown"
+            font_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets", "fonts", "Inter_28pt-Regular.ttf"))
+            if os.path.exists(font_path):
+                with open(font_path, "rb") as f:
+                    font_hash = hashlib.sha256(f.read()).hexdigest()
+                    
+            import inspect
+            try:
+                renderer_source = inspect.getsource(renderer.__class__)
+                renderer_hash = hashlib.sha256(renderer_source.encode()).hexdigest()
+            except:
+                renderer_hash = "unknown"
+            
+            # Save Renderer Metadata
+            metadata = {
+                "template": template_name,
+                "layout": layout_path,
+                "payload_hash": payload_hash,
+                "layout_hash": layout_hash,
+                "template_hash": template_hash,
+                "font_hash": font_hash,
+                "renderer_hash": renderer_hash
+            }
+            with open(os.path.join(generation_dir, "render_metadata.json"), "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2)
+                
+            # Expose hashes on the job object for manifest
+            batch.hashes = {
+                "layout": layout_hash,
+                "template": template_hash,
+                "fonts": font_hash,
+                "renderer": renderer_hash
+            }
+                
             logger.info("Rendered Slides")
             if pipeline_context: pipeline_context.end_stage("success")
         except Exception as e:
@@ -107,7 +178,7 @@ class SchedulerOrchestrator:
             logger.info("Uploading to Supabase Storage")
             upload_result = self.storage.upload_folder(
                 generation_id=batch.batch_id,
-                local_folder=self.output_dir,
+                local_folder=generation_dir,
                 remote_prefix=f"{niche}/{batch.batch_id}",
                 attempt_repo=self.attempt_repo
             )
@@ -118,7 +189,11 @@ class SchedulerOrchestrator:
                 
             # Build Artifacts
             for i, file_res in enumerate(upload_result.get("files", [])):
-                local_path = os.path.join(self.output_dir, file_res["filename"])
+                local_path = os.path.join(generation_dir, file_res["filename"])
+                # We only want to upload PNG artifacts for the Job, but manifest/json etc might also upload.
+                # Just include all uploaded files for now.
+                if not os.path.exists(local_path):
+                    continue
                 with open(local_path, "rb") as f:
                     sha256 = hashlib.sha256(f.read()).hexdigest()
                 mime_type, _ = mimetypes.guess_type(local_path)
@@ -161,6 +236,7 @@ class SchedulerOrchestrator:
             artifacts=artifacts,
             status="READY"
         )
+        job.hashes = getattr(batch, "hashes", {})
         
         logger.info("PublishJob Ready")
         return job

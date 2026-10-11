@@ -14,7 +14,9 @@ from features.publishing.uploaded_artifact_repository import UploadedArtifactRep
 
 logger = logging.getLogger(__name__)
 
-class PublicationRepository:
+from features.publishing.contracts import PublicationRepository
+
+class SQLitePublicationRepository(PublicationRepository):
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or os.path.join(os.path.dirname(__file__), "..", "..", PUBLISHING_DB_PATH)
         run_publishing_migrations(self.db_path)
@@ -126,8 +128,8 @@ class PublicationRepository:
             conn.close()
 
 __all__ = [
-    "PublicationRepository",
-    "UploadedArtifactRepository",
+    "SQLitePublicationRepository",
+    "SQLiteUploadedArtifactRepository",
     "PublicationConflictError",
     "UploadArtifactConflictError",
     "UploadedArtifactValidationError",

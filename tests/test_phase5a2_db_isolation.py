@@ -1,3 +1,8 @@
+from features.publishing.repository import SQLitePublicationRepository
+from features.publishing.uploaded_artifact_repository import SQLiteUploadedArtifactRepository
+from features.publishing.upload_attempt_repository import SQLiteUploadAttemptRepository
+from features.publishing.instagram_attempt_repository import SQLiteInstagramPublicationAttemptRepository
+from features.publishing.provider import RepositoryProvider
 import os
 import hashlib
 import pytest
@@ -25,10 +30,10 @@ def test_db_isolation_regression():
     baseline_sha = get_file_sha256(tracked_db_path)
     
     # Default constructed instances
-    pub_repo = PublicationRepository()
-    uploaded_repo = UploadedArtifactRepository()
-    ig_repo = InstagramPublicationAttemptRepository()
-    upload_repo = UploadAttemptRepository()
+    pub_repo = SQLitePublicationRepository()
+    uploaded_repo = SQLiteUploadedArtifactRepository()
+    ig_repo = SQLiteInstagramPublicationAttemptRepository()
+    upload_repo = SQLiteUploadAttemptRepository()
     
     repos = {
         "PublicationRepository": pub_repo,

@@ -14,9 +14,14 @@ class MockCompletionService:
     def complete(self, job, result):
         return True
 
+class MockJob:
+    generation_id = "mock"
+
 class MockOrchestrator:
-    def run_today(self, override_day=None, pipeline_context=None):
-        return {"dummy": "job"}
+    def __init__(self, **kwargs):
+        pass
+    def run_today(self, *args, **kwargs):
+        return MockJob()
 
 def test_dry_run_feature_flag(monkeypatch):
     import config.app_config
@@ -33,6 +38,7 @@ def test_dry_run_feature_flag(monkeypatch):
     class MockConfig:
         features = MockFeatures()
         class runtime:
+            persistence_backend = "sqlite"
             class scheduler:
                 app_env = "test"
                 

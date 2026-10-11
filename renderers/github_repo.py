@@ -37,6 +37,7 @@ class GithubRepoRenderer(BaseRenderer):
                 elif field in payload:
                     self.draw_field(draw, str(payload[field]), region, debug_bboxes=debug_bboxes)
                     
+
             generated_files.append(self._save_slide(content_img, out_dir, f"0{slide_num}_Content.png"))
             
         # Slide 9: CTA

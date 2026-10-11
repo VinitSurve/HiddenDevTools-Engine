@@ -14,3 +14,4 @@ class PublishJob:
     hashtags: List[str]
     artifacts: List[Artifact] = field(default_factory=list)
     status: str = "ORCHESTRATED"
+    hashes: dict = field(default_factory=dict)

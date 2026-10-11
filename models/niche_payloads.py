@@ -90,3 +90,12 @@ class CareerResourcePayload(BasePayload):
     best_for_3: str = ""
     why_use_it: str = ""
     rating: str = ""
+
+@dataclass
+class WeeklyRoundupPayload(BasePayload):
+    # A generic payload for Weekly Roundup
+    title: str = ""
+    description: str = ""
+    link: str = ""
+    category: str = ""
+

@@ -132,18 +132,26 @@ class InstagramService:
                 message = error.get("message", "Unknown error")
                 error_type = error.get("type", "OAuthException")
 
-                # Retry on transient errors
                 if (
                     code in TRANSIENT_ERROR_CODES
                     and attempt < max_retries
-                ):
-                    delay = 2 ** attempt
-                    logger.warning(
-                        f"Transient error [{code}]: {message}. "
-                        f"Retrying in {delay}s "
-                        f"(attempt {attempt}/{max_retries}) "
-                        f"[fbtrace_id={fbtrace_id}]"
-                    )
+                ) or (code == 9 and subcode == 2207085 and attempt < 3):
+                    if code == 9 and subcode == 2207085:
+                        delay = 300 if attempt == 1 else 600
+                        logger.warning(
+                            f"Rate Limit error [{code}:{subcode}]: {message}. "
+                            f"Retrying in {delay}s "
+                            f"(attempt {attempt}/3) "
+                            f"[fbtrace_id={fbtrace_id}]"
+                        )
+                    else:
+                        delay = 2 ** attempt
+                        logger.warning(
+                            f"Transient error [{code}:{subcode}]: {message}. "
+                            f"Retrying in {delay}s "
+                            f"(attempt {attempt}/{max_retries}) "
+                            f"[fbtrace_id={fbtrace_id}]"
+                        )
                     time.sleep(delay)
                     continue
 
@@ -520,6 +528,33 @@ class InstagramService:
         }
 
     # --------------------------------------------------
+    # Check Publishing Limit
+    # --------------------------------------------------
+
+    def check_publishing_limit(self) -> Dict[str, Any]:
+        """
+        Check the publishing quota limit.
+        GET /{ig-user-id}/content_publishing_limit
+        """
+        response = self._make_request(
+            "GET",
+            f"{self.ig_user_id}/content_publishing_limit",
+            params={"fields": "config,quota_usage"}
+        )
+        if "error" in response:
+            return {"success": False, "error": response["error"]}
+            
+        data = response.get("data", [])
+        if not data:
+            return {"success": True, "quota_usage": 0, "quota_total": 25}
+            
+        usage = data[0].get("quota_usage", 0)
+        total = data[0].get("config", {}).get("quota_total", 25)
+        
+        logger.info(f"Instagram Publishing Quota: {usage}/{total} used.")
+        return {"success": True, "quota_usage": usage, "quota_total": total}
+
+    # --------------------------------------------------
     # Get Permalink
     # --------------------------------------------------
 
@@ -663,6 +698,16 @@ class InstagramService:
 
         # Before media_publish
         attempt_repo.transition_state(generation_id, 'PUBLISH_REQUESTED')
+        
+        # Check quota limit before publishing
+        quota = self.check_publishing_limit()
+        if quota.get("success"):
+            usage = quota.get("quota_usage", 0)
+            total = quota.get("quota_total", 25)
+            if usage >= total:
+                logger.error(f"Quota exhausted ({usage}/{total}). Cannot publish {generation_id} right now. Transitioning to PUBLISH_RETRY_AUTHORIZED.")
+                attempt_repo.transition_state(generation_id, 'PUBLISH_RETRY_AUTHORIZED')
+                return {"success": False, "error": f"Publishing quota exhausted ({usage}/{total})."}
         
         try:
             publish_result = self.publish(creation_id)

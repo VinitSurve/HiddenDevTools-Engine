@@ -25,6 +25,21 @@ class PublishBatchService:
         Uses BatchClaimService to securely claim 7 Draft rows.
         """
         try:
+            from config.app_config import config
+            if config.features.dry_run:
+                logger.info("DRY RUN: Simulating get_next_batch without fetching real sheet")
+                candidate_rows = []
+                for i in range(2, 9):
+                    payload = BasePayload(id=f"MOCK_{i}", slide_number=i, status="Draft")
+                    payload.row_index = i
+                    candidate_rows.append(payload)
+                
+                return PublishBatch(
+                    batch_id=f"GEN_{uuid.uuid4().hex[:8].upper()}",
+                    rows=candidate_rows,
+                    sheet_name=sheet_name
+                )
+                
             ws = None
             if open_sheet is not None:
                 ws = open_sheet(sheet_name)
@@ -33,15 +48,35 @@ class PublishBatchService:
                 logger.error(f"Cannot open sheet {sheet_name}")
                 return None
                 
-            # For now, we mock row fetching as if we found 7 draft rows.
-            # In a full implementation, we'd query `ws` to find 7 rows in Draft status.
-            # We construct synthetic candidates to claim since this is still 
-            # early integration.
-            candidate_rows = []
-            for i in range(2, 9):
-                payload = BasePayload(id=f"MOCK_{i}", slide_number=i, status="Draft")
-                payload.row_index = i
-                candidate_rows.append(payload)
+            try:
+                from sheet_api import get_draft_rows
+                from adapters.niche_adapter import NicheAdapter
+                
+                raw_rows = get_draft_rows(limit=7, sheet_name=sheet_name)
+                if not raw_rows or len(raw_rows) < 7:
+                    logger.error(f"Not enough draft rows for {niche}. Found {len(raw_rows) if raw_rows else 0}.")
+                    return None
+                    
+                candidate_rows = NicheAdapter.adapt_rows(sheet_name, raw_rows)
+                
+                # Trace for Slide 2 debugging
+                logger.info(f"--- TRACE PAYLOAD ---")
+                logger.info(f"Requested Day: {date}")
+                logger.info(f"Worksheet: {sheet_name}")
+                if len(raw_rows) > 0:
+                    first_raw = raw_rows[0]
+                    first_adapted = candidate_rows[0]
+                    logger.info(f"Claimed Row Number (Slide 2): {first_raw.get('_row', 'unknown')}")
+                    logger.info(f"Raw Google Sheets Row (Slide 2): {first_raw}")
+                    logger.info(f"NicheAdapter Output (Slide 2): {first_adapted}")
+                
+                # Auto-assign slide numbers sequentially to satisfy validation
+                for idx, p in enumerate(candidate_rows):
+                    p.slide_number = idx + 2
+                
+            except Exception as e:
+                logger.error(f"Failed to fetch real draft rows from sheet: {e}", exc_info=True)
+                return None
                 
             generation_id = f"GEN_{uuid.uuid4().hex[:8].upper()}"
             
@@ -62,5 +97,5 @@ class PublishBatchService:
                 sheet_name=sheet_name
             )
         except Exception as e:
-            logger.error(f"Exception in get_next_batch: {e}")
+            logger.error(f"Exception in get_next_batch: {e}", exc_info=True)
             return None

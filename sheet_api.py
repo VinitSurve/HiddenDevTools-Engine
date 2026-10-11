@@ -1,4 +1,5 @@
 import gspread
+from datetime import datetime
 from google.oauth2.service_account import Credentials
 from settings import STATUS_COLUMN
 from config.app_config import config
@@ -82,7 +83,12 @@ def get_all_rows(sheet_name=None):
 
     ws = open_sheet(sheet_name)
 
-    rows = ws.get_all_records()
+    all_vals = ws.get_all_values()
+    if not all_vals:
+        return []
+    
+    headers = all_vals[0]
+    rows = [dict(zip(headers, row)) for row in all_vals[1:]]
 
     for index, row in enumerate(rows):
 

@@ -49,6 +49,20 @@ def test_sunday_disabled(orchestrator):
 @patch('scheduler.orchestrator.SupabaseStorage.upload_folder')
 def test_day_niche_selection(mock_upload_folder, mock_get_caption, mock_get_renderer, orchestrator, day, expected_niche):
     mock_renderer = MagicMock()
+    mock_renderer.content_template_name = "mock"
+    mock_renderer.layout_path = "mock"
+    mock_renderer.compute_payload_hash.return_value = "hash"
+    mock_renderer.compute_layout_hash.return_value = "hash"
+    mock_renderer.compute_template_hash.return_value = "hash"
+    mock_renderer.compute_font_hash.return_value = "hash"
+    mock_renderer.compute_renderer_hash.return_value = "hash"
+    mock_renderer.content_template_name = 'mock'
+    mock_renderer.layout_path = 'mock'
+    mock_renderer.compute_payload_hash.return_value = 'hash'
+    mock_renderer.compute_layout_hash.return_value = 'hash'
+    mock_renderer.compute_template_hash.return_value = 'hash'
+    mock_renderer.compute_font_hash.return_value = 'hash'
+    mock_renderer.compute_renderer_hash.return_value = 'hash'
     mock_renderer.render.return_value = [f"slide_{i}.png" for i in range(9)]
     mock_get_renderer.return_value = mock_renderer
     
@@ -82,6 +96,13 @@ def test_day_niche_selection(mock_upload_folder, mock_get_caption, mock_get_rend
 @patch('scheduler.orchestrator.SupabaseStorage.upload_folder')
 def test_exact_counts_and_logging(mock_upload_folder, mock_get_caption, mock_get_renderer, orchestrator, caplog):
     mock_renderer = MagicMock()
+    mock_renderer.content_template_name = 'mock'
+    mock_renderer.layout_path = 'mock'
+    mock_renderer.compute_payload_hash.return_value = 'hash'
+    mock_renderer.compute_layout_hash.return_value = 'hash'
+    mock_renderer.compute_template_hash.return_value = 'hash'
+    mock_renderer.compute_font_hash.return_value = 'hash'
+    mock_renderer.compute_renderer_hash.return_value = 'hash'
     mock_renderer.render.return_value = [f"slide_{i}.png" for i in range(9)]
     mock_get_renderer.return_value = mock_renderer
     
@@ -94,9 +115,10 @@ def test_exact_counts_and_logging(mock_upload_folder, mock_get_caption, mock_get
     
     # Touch files
     import os
-    os.makedirs(orchestrator.output_dir, exist_ok=True)
+    generation_dir = os.path.join(orchestrator.output_dir, "GEN_MOCK")
+    os.makedirs(generation_dir, exist_ok=True)
     for i in range(9):
-        with open(os.path.join(orchestrator.output_dir, f"slide_{i}.png"), "w") as f:
+        with open(os.path.join(generation_dir, f"slide_{i}.png"), "w") as f:
             f.write("mock")
     
     rows = []

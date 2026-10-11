@@ -19,15 +19,25 @@ def measure_latency(func):
     latency_ms = int((time.time() - start) * 1000)
     return {"status": status, "latency_ms": latency_ms}
 
-def check_database():
+def check_persistence():
+    backend = getattr(config.runtime, "persistence_backend", "sqlite")
+    
     def ping():
-        conn = sqlite3.connect(PUBLISHING_DB_PATH)
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM published_generations LIMIT 1")
-        finally:
-            conn.close()
-    return measure_latency(ping)
+        if backend == "supabase":
+            from features.publishing.supabase_publication_repository import SupabasePublicationRepository
+            repo = SupabasePublicationRepository()
+            repo.get_by_generation_id("healthcheck_ping_123")
+        else:
+            conn = sqlite3.connect(PUBLISHING_DB_PATH)
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1 FROM published_generations LIMIT 1")
+            finally:
+                conn.close()
+                
+    result = measure_latency(ping)
+    result["backend"] = backend
+    return result
 
 def check_supabase():
     def ping():
@@ -60,7 +70,7 @@ def check_google_sheets():
 
 def run_healthcheck():
     checks = {
-        "database": check_database(),
+        "persistence": check_persistence(),
         "supabase": check_supabase(),
         "instagram": check_instagram(),
         "google_sheets": check_google_sheets(),

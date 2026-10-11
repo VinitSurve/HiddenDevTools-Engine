@@ -16,7 +16,9 @@ class RemoteArtifactConflictError(Exception):
 class UntrackedRemoteArtifactError(Exception):
     pass
 
-class UploadAttemptRepository:
+from features.publishing.contracts import UploadAttemptRepository
+
+class SQLiteUploadAttemptRepository(UploadAttemptRepository):
     def __init__(self, db_path: str = PUBLISHING_DB_PATH):
         self.db_path = db_path
 

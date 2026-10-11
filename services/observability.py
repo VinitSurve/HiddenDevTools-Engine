@@ -7,6 +7,7 @@ import logging
 from contextvars import ContextVar
 from typing import Dict, Any, Optional
 import config.version as version
+from config.app_config import config
 
 # Context variable to hold correlation fields for logging
 correlation_context: ContextVar[Dict[str, Any]] = ContextVar("correlation_context", default={})
@@ -163,5 +164,7 @@ class PipelineContext:
             summary["batch_id"] = self.batch_id
         if self.niche:
             summary["niche"] = self.niche
+            
+        summary["persistence_backend"] = getattr(config.runtime, "persistence_backend", "sqlite")
             
         return summary

@@ -1,4 +1,5 @@
 import os
+from features.publishing.provider import RepositoryProvider
 import json
 import uuid
 import logging
@@ -276,7 +277,7 @@ class DailyCarouselPipeline:
             pub_repo = self.pub_repo
             if pub_repo is None:
                 from features.publishing.repository import PublicationRepository
-                pub_repo = PublicationRepository()
+                pub_repo = RepositoryProvider.get_publication_repository()
 
             # Step 4: Active Batch Resolution (Precedence A and B)
             resolution = ActiveBatchResolver.resolve(sheet_name, rows, pub_repo)

@@ -1,4 +1,5 @@
 import logging
+from features.publishing.provider import RepositoryProvider
 import datetime
 from typing import Dict, Any, List
 from services.observability import PipelineContext
@@ -111,7 +112,7 @@ class PublicationRecovery:
 
 class ReconciliationWorker:
     def __init__(self):
-        self.pub_repo = PublicationRepository()
+        self.pub_repo = RepositoryProvider.get_publication_repository()
         self.sheet_recovery = SheetSyncRecovery(self.pub_repo)
         self.upload_recovery = UploadRecovery()
         self.publication_recovery = PublicationRecovery()

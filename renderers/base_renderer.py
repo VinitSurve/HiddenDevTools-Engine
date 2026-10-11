@@ -10,6 +10,10 @@ class RendererTextOverflowError(Exception):
     """Raised when text cannot fit in the declared field region."""
     pass
 
+class RendererValidationError(Exception):
+    """Raised when critical fields are missing from the payload."""
+    pass
+
 class LayoutRegion:
     def __init__(self, name: str, x: int, y: int, max_width: int, max_height: int,
                  preferred_font_size: int, minimum_font_size: int, font_path: str,
@@ -72,22 +76,47 @@ class BaseRenderer:
         return ImageFont.truetype(font_path, size)
 
     def wrap_text(self, text: str, font: ImageFont.FreeTypeFont, draw: ImageDraw.ImageDraw, max_width: int) -> List[str]:
-        """Deterministic word wrapping"""
+        """Deterministic word wrapping. Force-breaks words that are longer than max_width."""
         lines = []
         words = text.split()
         if not words:
             return lines
 
-        current_line = words[0]
-        for word in words[1:]:
-            test_line = current_line + " " + word
+        current_line = ""
+        
+        for word in words:
+            # If the single word is wider than max_width, we must break it by character
+            word_bbox = draw.textbbox((0, 0), word, font=font)
+            if (word_bbox[2] - word_bbox[0]) > max_width:
+                # Break the word character by character
+                current_part = ""
+                for char in word:
+                    test_part = current_part + char
+                    test_line = (current_line + " " + test_part).strip() if current_line else test_part
+                    bbox = draw.textbbox((0, 0), test_line, font=font)
+                    if (bbox[2] - bbox[0]) <= max_width:
+                        current_part += char
+                    else:
+                        if current_line:
+                            lines.append(current_line + " " + current_part)
+                        else:
+                            lines.append(current_part)
+                        current_line = ""
+                        current_part = char
+                if current_part:
+                    word = current_part
+            
+            test_line = current_line + " " + word if current_line else word
             bbox = draw.textbbox((0, 0), test_line, font=font)
             if (bbox[2] - bbox[0]) <= max_width:
                 current_line = test_line
             else:
                 lines.append(current_line)
                 current_line = word
-        lines.append(current_line)
+                
+        if current_line:
+            lines.append(current_line)
+            
         return lines
 
     def draw_field(self, draw: ImageDraw.ImageDraw, text: str, region: LayoutRegion, color: str = "#000000", debug_bboxes: bool = False):
@@ -121,7 +150,16 @@ class BaseRenderer:
                 ascent, descent = font.getmetrics()
                 line_spacing = ascent + descent + 4
                 total_height = (len(lines) * line_spacing) - 4 if lines else 0
-                if total_height <= region.max_height:
+                
+                # Verify that no line actually exceeds max_width (edge case check)
+                width_ok = True
+                for line in lines:
+                    bbox = draw.textbbox((0, 0), line, font=font)
+                    if (bbox[2] - bbox[0]) > region.max_width:
+                        width_ok = False
+                        break
+                        
+                if total_height <= region.max_height and width_ok:
                     break # Fits!
             
             current_size -= 1
@@ -150,6 +188,34 @@ class BaseRenderer:
                 
             draw.text((x_offset, y_offset), line, font=font, fill=color, anchor="lt")
             y_offset += line_spacing
+
+    def _draw_debug_stamp(self, draw: ImageDraw.ImageDraw, payload: dict, slide_num: int):
+        """Stamps debugging info at the bottom of the slide."""
+        try:
+            # We use a default font just in case
+            font = ImageFont.load_default()
+            
+            gen_id = payload.get("generation_id", "UNKNOWN")
+            row_idx = payload.get("row_index", "UNKNOWN")
+            
+            # Identify the primary resource name across all niches
+            primary_name = payload.get("resource_name") or payload.get("tool_name") or payload.get("prompt_title") or payload.get("alternative_name") or "UNKNOWN"
+            
+            # The niche maps to worksheet basically
+            niche = payload.get("niche", "UNKNOWN")
+            
+            stamp_text = (
+                f"DEBUG STAMP | Generation: {gen_id} | Row: {row_idx} | "
+                f"Resource: {primary_name} | Niche: {niche} | Slide: {slide_num}"
+            )
+            
+            # Draw a black rectangle at the bottom
+            stamp_height = 30
+            y_pos = self.TARGET_HEIGHT - stamp_height
+            draw.rectangle([0, y_pos, self.TARGET_WIDTH, self.TARGET_HEIGHT], fill="black")
+            draw.text((10, y_pos + 5), stamp_text, fill="white", font=font)
+        except Exception as e:
+            logger.warning(f"Failed to draw debug stamp: {e}")
 
     def render_content_slide(self, payload: dict, slide_num: int, content_template_name: str, out_path: str, regions_override: dict = None, debug_bboxes: bool = False) -> str:
         # Build effective regions, preserving the full LayoutRegion contract
@@ -183,13 +249,34 @@ class BaseRenderer:
         for field, region in effective_regions.items():
             if field == "Slide Number":
                 self.draw_field(draw, str(slide_num), region, debug_bboxes=debug_bboxes)
-            elif field in payload:
-                self.draw_field(draw, str(payload[field]), region, debug_bboxes=debug_bboxes)
+                continue
+                
+            resolved_value = None
+            if field in payload:
+                resolved_value = payload[field]
             else:
                 for k, v in payload.items():
                     if k.lower().strip() == field.lower().strip():
-                        self.draw_field(draw, str(v), region, debug_bboxes=debug_bboxes)
+                        resolved_value = v
                         break
+            
+            if not resolved_value or str(resolved_value).strip() == "":
+                # Required field missing
+                niche = payload.get("niche", "Unknown") if isinstance(payload, dict) else getattr(payload, "niche", "Unknown")
+                gen_id = payload.get("generation_id", "Unknown") if isinstance(payload, dict) else getattr(payload, "generation_id", "Unknown")
+                raise RendererValidationError(
+                    f"RendererValidationError\n"
+                    f"Niche: {niche}\n"
+                    f"Slide: {slide_num}\n"
+                    f"Missing Field: {field}\n"
+                    f"Expected: non-empty string\n"
+                    f"Actual: {repr(resolved_value)}\n"
+                    f"Region: {region.name}\n"
+                    f"Coordinates: x={region.x}, y={region.y}\n"
+                    f"Generation: {gen_id}"
+                )
+                
+            self.draw_field(draw, str(resolved_value), region, debug_bboxes=debug_bboxes)
                 
         content_img.save(out_path, format="PNG")
         return out_path

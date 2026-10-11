@@ -149,12 +149,12 @@ def test_no_network_imports():
     assert "import urllib" not in source
 
 @pytest.mark.parametrize("renderer_class, expected_fields", [
-    (GithubRepoRenderer, ["Resource Name", "Link", "Short Description", "Pricing", "Difficulty", "Slide Number", "Why it Matters", "Best for 1", "Best for 2", "Best for 3", "Rating"]),
-    (ToolsWebsitesRenderer, ["Tool Name", "Website", "Short Description", "Category", "Pricing", "Platform", "Best for 1", "Best for 2", "Best for 3", "Rating", "Slide Number"]),
-    (DeveloperToolsRenderer, ["Tool Name", "Website", "Category", "License", "Slide Number", "Short Description", "Why Developers Love it", "Best for 1", "Best for 2", "Best for 3", "Rating"]),
-    (PromptLibraryRenderer, ["Prompt Title", "Slide Number", "Prompt Number", "Prompt", "Best For 1", "Best For 2", "Best For 3", "Expected Output"]),
-    (FreeAlternativesRenderer, ["Alternative Name", "Replaces", "Website", "Pricing", "Category", "Slide Number", "Why Switch", "Best For 1", "Best For 2", "Best For 3", "Rating"]),
-    (CareerResourcesRenderer, ["Resource Name", "Website", "Category", "Free/Paid", "Slide Number", "Best For 1", "Best For 2", "Best For 3", "Why Use It", "Rating"])
+    (GithubRepoRenderer, ["resource_name", "link", "short_description", "pricing", "difficulty", "Slide Number", "why_it_matters", "best_for_1", "best_for_2", "best_for_3", "rating"]),
+    (ToolsWebsitesRenderer, ["tool_name", "website", "short_description", "category", "pricing", "platform", "best_for_1", "best_for_2", "best_for_3", "rating", "Slide Number"]),
+    (DeveloperToolsRenderer, ["tool_name", "website", "category", "license", "Slide Number", "short_description", "why_developers_love_it", "best_for_1", "best_for_2", "best_for_3", "rating"]),
+    (PromptLibraryRenderer, ["prompt_title", "Slide Number", "prompt_number", "prompt", "best_for_1", "best_for_2", "best_for_3", "expected_output"]),
+    (FreeAlternativesRenderer, ["alternative_name", "replaces", "website", "pricing", "category", "Slide Number", "why_switch", "best_for_1", "best_for_2", "best_for_3", "rating"]),
+    (CareerResourcesRenderer, ["resource_name", "website", "category", "free_paid", "Slide Number", "best_for_1", "best_for_2", "best_for_3", "why_use_it", "rating"])
 ])
 def test_all_renderers_consume_exact_payloads(templates_dir, tmp_path, renderer_class, expected_fields):
     renderer = renderer_class(templates_dir)

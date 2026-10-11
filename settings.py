@@ -27,7 +27,7 @@ CANVAS_HEIGHT = 1302
 TEMPLATES = {
     "cover": "templates/Github_Master_Cover.png",
     "content": "templates/Github_Content_Slide_Template.jpg",
-    "last": "templates/Github_Last_Page.png",
+    "last": "templates/CTA.png",
 }
 
 OUTPUT_DIR = "output"

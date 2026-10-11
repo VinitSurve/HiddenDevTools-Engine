@@ -1,4 +1,5 @@
 import logging
+from features.publishing.provider import RepositoryProvider
 from typing import Optional
 from models.publish_job import PublishJob
 from models.publish_result import PublishResult
@@ -13,8 +14,8 @@ class InstagramGraphPublisher(Publisher):
     def __init__(self):
         try:
             self.service = InstagramService()
-            self.attempt_repo = InstagramPublicationAttemptRepository()
-            self.pub_repo = PublicationRepository()
+            self.attempt_repo = RepositoryProvider.get_instagram_attempt_repository()
+            self.pub_repo = RepositoryProvider.get_publication_repository()
         except ValueError:
             self.service = None
             self.attempt_repo = None

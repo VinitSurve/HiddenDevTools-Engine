@@ -1,4 +1,5 @@
 import logging
+from features.publishing.provider import RepositoryProvider
 import datetime
 from models.publish_job import PublishJob
 from models.publish_result import PublishResult
@@ -16,7 +17,7 @@ class CompletionService:
     Handles persisting outcomes and updating external state (SQLite, Google Sheets).
     """
     def __init__(self):
-        self.pub_repo = PublicationRepository()
+        self.pub_repo = RepositoryProvider.get_publication_repository()
         
     def complete(self, job: PublishJob, result: PublishResult) -> bool:
         if not result.success:

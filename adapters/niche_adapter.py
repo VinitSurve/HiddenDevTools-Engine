@@ -8,6 +8,7 @@ from models.niche_payloads import (
     DeveloperToolsPayload,
     FreeAlternativePayload,
     CareerResourcePayload,
+    WeeklyRoundupPayload,
 )
 
 logger = logging.getLogger(__name__)
@@ -127,6 +128,14 @@ class NicheAdapter:
                     best_for_3=str(row.get("Best For 3", "")),
                     why_use_it=str(row.get("Why Use It", "")),
                     rating=str(row.get("Rating", "")),
+                )
+            elif sheet_name == "Weekly Roundup":
+                payload = WeeklyRoundupPayload(
+                    **base_kwargs,
+                    title=str(row.get("Title", "")),
+                    description=str(row.get("Description", "")),
+                    link=str(row.get("Link", "")),
+                    category=str(row.get("Category", "")),
                 )
             else:
                 raise ValueError(f"Unsupported sheet_name for NicheAdapter: '{sheet_name}'")

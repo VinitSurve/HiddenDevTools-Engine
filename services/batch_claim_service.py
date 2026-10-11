@@ -43,24 +43,7 @@ class BatchClaimService:
                 cols[field] = "M" if field == "Status" else "P"
         return cols
 
-    @staticmethod
-    def _update_row_fields(ws: Any, row_num: int, cols: Dict[str, str], status_val: str, gen_id_val: str, post_val: str, gen_at_val: str, sheet_name: str):
-        if hasattr(ws, "update_cell_by_col_name"):
-            # Mock or specialized helper support
-            ws.update_cell_by_col_name(row_num, "Status", status_val)
-            ws.update_cell_by_col_name(row_num, "Generation ID", gen_id_val)
-            ws.update_cell_by_col_name(row_num, "Post", post_val)
-            ws.update_cell_by_col_name(row_num, "Generated At", gen_at_val)
-        elif hasattr(ws, "update_acell"):
-            ws.update_acell(f"{cols['Status']}{row_num}", status_val)
-            ws.update_acell(f"{cols['Generation ID']}{row_num}", gen_id_val)
-            ws.update_acell(f"{cols['Post']}{row_num}", post_val)
-            ws.update_acell(f"{cols['Generated At']}{row_num}", gen_at_val)
-        elif update_cell is not None and sheet_name:
-            update_cell(sheet_name, row_num, cols["Status"], status_val)
-            update_cell(sheet_name, row_num, cols["Generation ID"], gen_id_val)
-            update_cell(sheet_name, row_num, cols["Post"], post_val)
-            update_cell(sheet_name, row_num, cols["Generated At"], gen_at_val)
+        pass
 
     @staticmethod
     def claim_resources(
@@ -108,7 +91,9 @@ class BatchClaimService:
 
         # 1. Fetch current rows to resolve exact row numbers
         try:
-            current_records = ws.get_all_records()
+            all_vals = ws.get_all_values()
+            headers = all_vals[0] if all_vals else []
+            current_records = [dict(zip(headers, row)) for row in all_vals[1:]]
         except Exception as e:
             logger.error(f"BATCH_CLAIM_READ_FAILED: Could not read rows for claim: {e}")
             return None
@@ -119,7 +104,7 @@ class BatchClaimService:
             if rec_id:
                 id_to_row_num[rec_id] = rec.get("_row", idx + 2)
 
-        # 2. Perform Batch Write (or individual cell updates)
+        # 2. Perform Batch Write
         try:
             for p in candidate_rows:
                 row_num = p.row_index if (p.row_index and p.row_index >= 2) else id_to_row_num.get(p.id)
@@ -134,7 +119,9 @@ class BatchClaimService:
 
         # 3. Durable Verification
         try:
-            verify_records = ws.get_all_records()
+            verify_vals = ws.get_all_values()
+            verify_headers = verify_vals[0] if verify_vals else []
+            verify_records = [dict(zip(verify_headers, row)) for row in verify_vals[1:]]
         except Exception as e:
             logger.error(f"BATCH_CLAIM_VERIFY_READ_FAILED: Could not read records for verification: {e}")
             BatchClaimService._rollback_claim(ws, candidate_rows, gen_id, cols, sheet_name)
@@ -146,9 +133,13 @@ class BatchClaimService:
         for p in candidate_rows:
             rec = id_to_record.get(p.id)
             if not rec:
+                logger.warning(f"Verification failed: ID {p.id} not found in id_to_record.")
                 verification_passed = False
                 break
-            if str(rec.get("Status", "")).strip() != "Generating" or str(rec.get("Generation ID", "")).strip() != gen_id:
+            actual_status = str(rec.get("Status", "")).strip()
+            actual_gen_id = str(rec.get("Generation ID", "")).strip()
+            if actual_status != "Generating" or actual_gen_id != gen_id:
+                logger.warning(f"Verification failed for ID {p.id}: Expected 'Generating'/{gen_id}, got '{actual_status}'/'{actual_gen_id}'.")
                 verification_passed = False
                 break
 
@@ -164,7 +155,9 @@ class BatchClaimService:
     @staticmethod
     def _rollback_claim(ws: Any, candidate_rows: List[BasePayload], failed_gen_id: str, cols: Dict[str, str], sheet_name: str) -> None:
         try:
-            records = ws.get_all_records()
+            rollback_vals = ws.get_all_values()
+            rollback_headers = rollback_vals[0] if rollback_vals else []
+            records = [dict(zip(rollback_headers, row)) for row in rollback_vals[1:]]
         except Exception as e:
             logger.error(f"BATCH_CLAIM_ROLLBACK_READ_FAILED: {e}")
             return
@@ -182,3 +175,24 @@ class BatchClaimService:
                         f"BATCH_CLAIM_OWNERSHIP_CHANGED: Skipping rollback for ID={rec_id} (row {row_num}). "
                         f"Expected {failed_gen_id}, found '{current_gen_id}'."
                     )
+
+    @staticmethod
+    def _update_row_fields(ws: Any, row_num: int, cols: Dict[str, str], status: str, gen_id: str, post: str, timestamp: str, sheet_name: str) -> None:
+        if hasattr(ws, "update_cell_by_col_name"):
+            ws.update_cell_by_col_name(row_num, "Status", status)
+            ws.update_cell_by_col_name(row_num, "Generation ID", gen_id)
+            ws.update_cell_by_col_name(row_num, "Post", post)
+            ws.update_cell_by_col_name(row_num, "Generated At", timestamp)
+            return
+
+        updates = [
+            {'range': f"{cols['Status']}{row_num}", 'values': [[status]]},
+            {'range': f"{cols['Generation ID']}{row_num}", 'values': [[gen_id]]},
+            {'range': f"{cols['Post']}{row_num}", 'values': [[post]]},
+            {'range': f"{cols['Generated At']}{row_num}", 'values': [[timestamp]]},
+        ]
+        if hasattr(ws, "batch_update"):
+            ws.batch_update(updates)
+        else:
+            for u in updates:
+                ws.update_acell(u['range'], u['values'][0][0])

@@ -1,4 +1,5 @@
 import os
+from features.publishing.provider import RepositoryProvider
 import logging
 from typing import Optional, Any
 
@@ -126,7 +127,7 @@ class CapabilityValidator:
             if artifact_repo is None:
                 try:
                     from features.publishing.uploaded_artifact_repository import UploadedArtifactRepository
-                    artifact_repo = UploadedArtifactRepository()
+                    artifact_repo = RepositoryProvider.get_uploaded_artifact_repository()
                 except Exception as e:
                     logger.error(f"UPLOADED_ARTIFACT_RECOVERY_FAILED: Could not initialize UploadedArtifactRepository: {e}")
                     return False

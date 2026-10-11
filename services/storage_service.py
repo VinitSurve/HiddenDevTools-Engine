@@ -158,13 +158,14 @@ class StorageService(ABC):
                 "error": f"Folder not found: {local_folder}",
             }
 
-        files = sorted(os.listdir(local_folder))
+        all_files = sorted(os.listdir(local_folder))
+        files = [f for f in all_files if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         if not files:
             return {
                 "success": False,
                 "urls": [],
                 "files": [],
-                "error": f"No files in folder: {local_folder}",
+                "error": f"No image files in folder: {local_folder}",
             }
             
         if len(files) != 9:
@@ -172,7 +173,7 @@ class StorageService(ABC):
                 "success": False,
                 "urls": [],
                 "files": [],
-                "error": f"Expected exactly 9 files for carousel upload, got {len(files)}",
+                "error": f"Expected exactly 9 image files for carousel upload, got {len(files)}",
             }
 
         logger.info(
@@ -453,13 +454,14 @@ class SupabaseStorage(StorageService):
                 "error": f"Folder not found: {local_folder}",
             }
 
-        files = sorted(os.listdir(local_folder))
+        all_files = sorted(os.listdir(local_folder))
+        files = [f for f in all_files if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         if not files:
             return {
                 "success": False,
                 "urls": [],
                 "files": [],
-                "error": f"No files in folder: {local_folder}",
+                "error": f"No image files in folder: {local_folder}",
             }
             
         if len(files) != 9:
@@ -467,7 +469,7 @@ class SupabaseStorage(StorageService):
                 "success": False,
                 "urls": [],
                 "files": [],
-                "error": f"Expected exactly 9 files for carousel upload, got {len(files)}",
+                "error": f"Expected exactly 9 image files for carousel upload, got {len(files)}",
             }
 
         logger.info(

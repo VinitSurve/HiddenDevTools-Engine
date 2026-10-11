@@ -1,3 +1,8 @@
+from features.publishing.repository import SQLitePublicationRepository
+from features.publishing.uploaded_artifact_repository import SQLiteUploadedArtifactRepository
+from features.publishing.upload_attempt_repository import SQLiteUploadAttemptRepository
+from features.publishing.instagram_attempt_repository import SQLiteInstagramPublicationAttemptRepository
+from features.publishing.provider import RepositoryProvider
 import os
 import re
 import json
@@ -38,6 +43,37 @@ class MockWorksheet:
 
     def get_all_records(self):
         return self.data
+        
+    def get_all_values(self):
+        return [self._headers] + [list(r.values()) for r in self.data]
+        
+    def batch_update(self, updates):
+        def letter_to_index(col_letter):
+            idx = 0
+            for c in col_letter:
+                idx = idx * 26 + (ord(c) - ord('A') + 1)
+            return idx - 1
+            
+        for update in updates:
+            range_addr = update['range']
+            value = update['values'][0][0]
+            import re
+            m = re.match(r"([A-Z]+)(\d+)", range_addr)
+            if not m:
+                continue
+            col_letter = m.group(1)
+            row_num = int(m.group(2))
+            
+            col_idx = letter_to_index(col_letter)
+            if col_idx < len(self._headers):
+                header_name = self._headers[col_idx]
+                for r in self.data:
+                    if r.get("_row") == row_num:
+                        r[header_name] = value
+                        break
+
+    def update_acell(self, label, value):
+        self.batch_update([{'range': label, 'values': [[value]]}])
 
     def update_cell_by_col_name(self, r, col_name, val):
         for item in self.data:
@@ -215,7 +251,7 @@ class TestScenarios16To17:
         assert res["stage"] == "Generating"
 
     def test_scenario_17_already_published_publication_repository_match(self, mock_db, sample_github_headers, tmp_path):
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         pub_repo.record_publication("GEN_ALREADY17", "media_17", "http://post.17", "2026-07-12 12:00:00")
         rows = [
             {
@@ -427,7 +463,7 @@ class TestScenarios24To38:
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
         for r in ws.data:
             r["Generation ID"] = "GEN_UP30"
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         def failing_uploader(gen_id):
             raise Exception("Supabase network error on upload")
         pipe = DailyCarouselPipeline(worksheet=ws, artifact_repo=repo, uploader_cb=failing_uploader, lock_path=str(tmp_path / "lock30"))
@@ -440,7 +476,7 @@ class TestScenarios24To38:
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
         for r in ws.data:
             r["Generation ID"] = "GEN_UP31"
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         def bad_url_uploader(gen_id):
             urls = [f"http://cdn/{i}.png" for i in range(1, 10)]
             urls[4] = "   "
@@ -499,7 +535,7 @@ class TestScenarios24To38:
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
         for r in ws.data:
             r["Generation ID"] = "GEN_PUB36"
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         def success_publisher(gen_id):
             return {"media_id": "m_36", "permalink": "http://ig.com/p/36"}
         def failing_update(*args, **kwargs):
@@ -512,7 +548,7 @@ class TestScenarios24To38:
             assert pub_repo.get_by_generation_id("GEN_PUB36")["media_id"] == "m_36"
 
     def test_scenario_37_retry_after_sheet_final_update_failure(self, sample_github_headers, mock_db):
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         pub_repo.record_publication("GEN_RETRY37", "m_37", "http://ig.com/p/37", "2026-07-12 12:00:00")
         rows = [
             {"ID": f"REP_{i}", "Slide Number": i, "Status": "Generating", "Generation ID": "GEN_RETRY37", "Post": "", "Published At": "", "_row": i}
@@ -529,7 +565,7 @@ class TestScenarios24To38:
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
         for r in ws.data:
             r["Generation ID"] = "GEN_DRV38"
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         def success_publisher(gen_id):
             return {"media_id": "m_38", "permalink": "http://ig.com/p/38"}
         def failing_drive(gen_id):
@@ -594,7 +630,7 @@ class TestScenarios39To48:
         assert [p.slide_number for p in selected] == [2, 3, 4, 5, 6, 7, 8]
 
     def test_scenario_46_exactly_9_images_uploaded(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         artifacts = [{"slide_number": i, "public_url": f"http://cdn/{i}.png"} for i in range(1, 10)]
         repo.record_artifacts("GEN_UP46", artifacts, "2026-07-12 10:00:00")
         assert len(repo.get_by_generation_id("GEN_UP46")) == 9
@@ -603,7 +639,7 @@ class TestScenarios39To48:
         ws = MockWorksheet(sample_github_headers, sample_7_draft_rows)
         for r in ws.data:
             r["Generation ID"] = "GEN_IG47"
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         received_gen_id = []
         def verify_publisher(gen_id):
             received_gen_id.append(gen_id)
@@ -640,7 +676,7 @@ class TestScenarios49To67:
         assert "002" in versions
 
     def test_scenario_50_publication_repository_idempotent(self, mock_db):
-        repo = PublicationRepository()
+        repo = SQLitePublicationRepository()
         repo.record_publication("GEN_IDEM50", "media_1", "http://perm.1", "2026-07-12 10:00:00")
         rec1 = repo.get_by_generation_id("GEN_IDEM50")
         repo.record_publication("GEN_IDEM50", "media_1", "http://perm.1", "2026-07-12 11:00:00")
@@ -673,7 +709,7 @@ class TestScenarios49To67:
         assert len(res["rows"]) == 7
 
     def test_scenario_54_unreconciled_published_record_highest_priority(self, mock_db):
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         pub_repo.record_publication("GEN_PRIO54", "media_54", "http://perm.54", "2026-07-12 10:00:00")
         rows = [{"ID": f"ID{i}", "Status": "Published", "Generation ID": "GEN_PRIO54", "Post": "http://perm.54", "Published At": "WRONG_TIME", "Slide Number": i} for i in range(2, 9)]
         res = ActiveBatchResolver.resolve("Github Repos", rows, pub_repo)
@@ -748,7 +784,7 @@ class TestScenarios49To67:
         assert res["stage"] == "Generating"
 
     def test_scenario_64_exact_publication_replay_is_idempotent(self, mock_db):
-        repo = PublicationRepository()
+        repo = SQLitePublicationRepository()
         repo.record_publication("GEN_REP64", "media_64", "http://perm.64", "2026-07-12 10:00:00")
         rec1 = repo.get_by_generation_id("GEN_REP64")
         repo.record_publication("GEN_REP64", "media_64", "http://perm.64", "2026-07-12 12:00:00")
@@ -757,19 +793,19 @@ class TestScenarios49To67:
         assert rec2["published_at"] == "2026-07-12 10:00:00"
 
     def test_scenario_65_same_gen_id_different_media_id_conflict(self, mock_db):
-        repo = PublicationRepository()
+        repo = SQLitePublicationRepository()
         repo.record_publication("GEN_C65", "media_orig", "http://perm", "2026-07-12 10:00:00")
         with pytest.raises(PublicationConflictError):
             repo.record_publication("GEN_C65", "media_DIFFERENT", "http://perm", "2026-07-12 10:00:00")
 
     def test_scenario_66_same_gen_id_different_permalink_conflict(self, mock_db):
-        repo = PublicationRepository()
+        repo = SQLitePublicationRepository()
         repo.record_publication("GEN_C66", "media_orig", "http://perm.orig", "2026-07-12 10:00:00")
         with pytest.raises(PublicationConflictError):
             repo.record_publication("GEN_C66", "media_orig", "http://perm.DIFFERENT", "2026-07-12 10:00:00")
 
     def test_scenario_67_idempotent_replay_preserves_original_published_at(self, mock_db):
-        repo = PublicationRepository()
+        repo = SQLitePublicationRepository()
         repo.record_publication("GEN_IDEM67", "media_67", "http://perm.67", "2026-07-12 09:00:00")
         repo.record_publication("GEN_IDEM67", "media_67", "http://perm.67", "2026-07-12 15:00:00")
         assert repo.get_by_generation_id("GEN_IDEM67")["published_at"] == "2026-07-12 09:00:00"
@@ -808,7 +844,7 @@ class TestScenarios68To72:
 
 class TestScenarios73To83:
     def test_scenario_73_precedence_a_reconciliation_is_capability_independent(self, mock_db, sample_github_headers):
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         pub_repo.record_publication("GEN_INDEP73", "media_i", "http://indep", "2026-07-12 18:00:00")
         rows = [
             {
@@ -826,7 +862,7 @@ class TestScenarios73To83:
             assert ws.data[0]["Published At"] == "2026-07-12 18:00:00"
 
     def test_scenario_74_precedence_a_uses_canonical_publication_repository_published_at(self, mock_db, sample_github_headers):
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         pub_repo.record_publication("GEN_CANON74", "media_74", "http://canon74", "2026-07-12 10:15:30")
         rows = [
             {
@@ -844,7 +880,7 @@ class TestScenarios73To83:
             assert r["Published At"] == "2026-07-12 10:15:30"
 
     def test_scenario_75_precedence_a_skips_renderer_storage_and_instagram_capabilities(self, mock_db, sample_github_headers):
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         pub_repo.record_publication("GEN_SKIP75", "media_75", "http://skip75", "2026-07-12 19:00:00")
         rows = [
             {
@@ -951,7 +987,7 @@ class TestScenarios84To93:
         assert len(rows) == 1
 
     def test_scenario_85_uploaded_artifact_repo_exact_replay_idempotence(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         valid_9 = [{"slide_number": i, "public_url": f"http://cdn.idempotent/{i}"} for i in range(1, 10)]
         repo.record_artifacts("GEN_IDEM85", valid_9, "2026-07-12 10:00:00")
         repo.record_artifacts("GEN_IDEM85", valid_9, "2026-07-12 11:00:00")
@@ -960,7 +996,7 @@ class TestScenarios84To93:
         assert recs[0]["uploaded_at"] == "2026-07-12 10:00:00"
 
     def test_scenario_86_uploaded_artifact_repo_conflicting_url_raises_error(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         valid_9 = [{"slide_number": i, "public_url": f"http://cdn.orig/{i}"} for i in range(1, 10)]
         repo.record_artifacts("GEN_CONF86", valid_9, "2026-07-12 10:00:00")
         conflict_9 = [{"slide_number": i, "public_url": f"http://cdn.CONFLICT/{i}" if i == 3 else f"http://cdn.orig/{i}"} for i in range(1, 10)]
@@ -968,34 +1004,34 @@ class TestScenarios84To93:
             repo.record_artifacts("GEN_CONF86", conflict_9, "2026-07-12 10:00:00")
 
     def test_scenario_87_uploaded_recovery_with_exactly_slides_1_to_9_persisted(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         valid_9 = [{"slide_number": i, "public_url": f"http://cdn/{i}.png"} for i in range(1, 10)]
         repo.record_artifacts("GEN_UP87", valid_9, "2026-07-12 10:00:00")
         assert CapabilityValidator.validate("Uploaded", "github_repo", "GEN_UP87", artifact_repo=repo)
 
     def test_scenario_88_uploaded_recovery_does_not_require_renderer_template(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         valid_9 = [{"slide_number": i, "public_url": f"http://cdn/{i}.png"} for i in range(1, 10)]
         repo.record_artifacts("GEN_UP88", valid_9, "2026-07-12 10:00:00")
         with patch.object(TemplateRegistry, "get_template_paths", side_effect=Exception("No template needed")):
             assert CapabilityValidator.validate("Uploaded", "github_repo", "GEN_UP88", artifact_repo=repo)
 
     def test_scenario_89_uploaded_recovery_does_not_require_storage_upload(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         valid_9 = [{"slide_number": i, "public_url": f"http://cdn/{i}.png"} for i in range(1, 10)]
         repo.record_artifacts("GEN_UP89", valid_9, "2026-07-12 10:00:00")
         with patch("services.capability_validator.CapabilityValidator._validate_storage_and_instagram_config", return_value=True):
             assert CapabilityValidator.validate("Uploaded", "github_repo", "GEN_UP89", artifact_repo=repo)
 
     def test_scenario_90_uploaded_recovery_validates_instagram_capability(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         valid_9 = [{"slide_number": i, "public_url": f"http://cdn.ig/{i}"} for i in range(1, 10)]
         repo.record_artifacts("GEN_IG90", valid_9, "2026-07-12 10:00:00")
         with patch.object(CapabilityValidator, "_validate_storage_and_instagram_config", return_value=False):
             assert not CapabilityValidator.validate("Uploaded", "github_repo", "GEN_IG90", artifact_repo=repo)
 
     def test_scenario_91_uploaded_recovery_fewer_than_9_persisted_artifacts_aborts(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         from settings import PUBLISHING_DB_PATH
         conn = sqlite3.connect(PUBLISHING_DB_PATH)
         for i in range(1, 9):
@@ -1013,7 +1049,7 @@ class TestScenarios84To93:
         assert not CapabilityValidator.validate("Uploaded", "github_repo", "GEN_MAL92", artifact_repo=repo)
 
     def test_scenario_93_uploaded_recovery_empty_public_url_aborts(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         from settings import PUBLISHING_DB_PATH
         conn = sqlite3.connect(PUBLISHING_DB_PATH)
         for i in range(1, 10):
@@ -1081,7 +1117,7 @@ class TestScenarios94To97:
     def test_scenario_97_foundation_precedence_a_reconciliation_capability_independent(self, sample_github_headers, monkeypatch):
         monkeypatch.setattr("pipelines.daily_carousel_pipeline.config", type("MockConfig", (), {"features": type("MockFeatures", (), {"enable_rendering": False})()})())
         
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         pub_repo.record_publication("GEN_97", "media_97", "http://ig/97", "2026-07-12 12:00:00")
         
         rows = []
@@ -1119,28 +1155,28 @@ class TestScenarios94To97:
 
 class TestScenarios98To109:
     def test_scenario_98_precedence_a_fewer_than_7_matching_rows_aborts(self, mock_db):
-            pub_repo = PublicationRepository()
+            pub_repo = SQLitePublicationRepository()
             pub_repo.record_publication("GEN_FEW98", "m_98", "http://ig/98", "2026-07-12 10:00:00")
             rows = [{"ID": f"R_{i}", "Slide Number": i, "Status": "Published", "Generation ID": "GEN_FEW98", "Post": "http://ig/98", "Published At": "2026-07-12 10:00:00", "_row": i} for i in range(2, 6)]
             res = ActiveBatchResolver.resolve("Github Repos", rows, pub_repo)
             assert res["type"] == "INVALID_PUBLISHED_BATCH"
             assert res["reason"] == "INVALID_PUBLISHED_BATCH_COUNT"
     def test_scenario_99_precedence_a_more_than_7_matching_rows_aborts(self, mock_db):
-            pub_repo = PublicationRepository()
+            pub_repo = SQLitePublicationRepository()
             pub_repo.record_publication("GEN_MORE99", "m_99", "http://ig/99", "2026-07-12 10:00:00")
             rows = [{"ID": f"R_{i}", "Slide Number": i, "Status": "Published", "Generation ID": "GEN_MORE99", "Post": "http://ig/99", "Published At": "2026-07-12 10:00:00", "_row": i} for i in range(2, 10)]
             res = ActiveBatchResolver.resolve("Github Repos", rows, pub_repo)
             assert res["type"] == "INVALID_PUBLISHED_BATCH"
             assert res["reason"] == "INVALID_PUBLISHED_BATCH_COUNT"
     def test_scenario_100_precedence_a_invalid_or_duplicate_slide_numbers_aborts(self, mock_db):
-            pub_repo = PublicationRepository()
+            pub_repo = SQLitePublicationRepository()
             pub_repo.record_publication("GEN_SL100", "m_100", "http://ig/100", "2026-07-12 10:00:00")
             rows = [{"ID": f"R_{i}", "Slide Number": i, "Status": "Published", "Generation ID": "GEN_SL100", "Post": "http://ig/100", "Published At": "2026-07-12 10:00:00", "_row": i} for i in range(1, 8)]
             res = ActiveBatchResolver.resolve("Github Repos", rows, pub_repo)
             assert res["type"] == "INVALID_PUBLISHED_BATCH"
             assert res["reason"] == "INVALID_PUBLISHED_BATCH_SLIDES"
     def test_scenario_101_invalid_published_batch_aborts_before_capability_and_selection(self, mock_db, sample_github_headers, tmp_path):
-            pub_repo = PublicationRepository()
+            pub_repo = SQLitePublicationRepository()
             pub_repo.record_publication("GEN_INV101", "m_101", "http://ig/101", "2026-07-12 10:00:00")
             rows = [{"ID": f"R_{i}", "Slide Number": i, "Status": "Published", "Generation ID": "GEN_INV101", "Post": "http://ig/101", "Published At": "2026-07-12 10:00:00", "_row": i} for i in range(2, 6)]
             ws = MockWorksheet(sample_github_headers, rows)
@@ -1151,14 +1187,14 @@ class TestScenarios98To109:
                 mock_cap.assert_not_called()
                 mock_sel.assert_not_called()
     def test_scenario_102_record_artifacts_rejects_fewer_than_9(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         assert len(repo.get_by_generation_id("GEN_TEST102")) == 0
         with pytest.raises(UploadedArtifactValidationError):
             repo.record_artifacts("GEN_TEST102", [{"slide_number": i, "public_url": f"http://u/{i}"} for i in range(1, 9)], "2026-07-12 10:00:00")
         assert len(repo.get_by_generation_id("GEN_TEST102")) == 0
 
     def test_scenario_103_record_artifacts_rejects_more_than_9(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         artifacts = [{"slide_number": i, "public_url": f"http://cdn/{i}"} for i in range(1, 11)]
         assert len(repo.get_by_generation_id("GEN_MORE103")) == 0
         with pytest.raises(UploadedArtifactValidationError):
@@ -1166,7 +1202,7 @@ class TestScenarios98To109:
         assert len(repo.get_by_generation_id("GEN_MORE103")) == 0
 
     def test_scenario_104_record_artifacts_rejects_duplicate_slide_numbers(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         bad_slides = [{"slide_number": 2, "public_url": f"http://u/{i}"} for i in range(1, 10)]
         assert len(repo.get_by_generation_id("GEN_DUP104")) == 0
         with pytest.raises(UploadedArtifactValidationError):
@@ -1174,7 +1210,7 @@ class TestScenarios98To109:
         assert len(repo.get_by_generation_id("GEN_DUP104")) == 0
 
     def test_scenario_105_record_artifacts_rejects_slide_0_or_10(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         artifacts_0 = [{"slide_number": i if i > 1 else 0, "public_url": f"http://cdn/{i}"} for i in range(1, 10)]
         assert len(repo.get_by_generation_id("GEN_SL0_105")) == 0
         with pytest.raises(UploadedArtifactValidationError):
@@ -1188,7 +1224,7 @@ class TestScenarios98To109:
         assert len(repo.get_by_generation_id("GEN_SL10_105")) == 0
 
     def test_scenario_106_record_artifacts_rejects_empty_public_url(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         empty_url = [{"slide_number": i, "public_url": "" if i == 5 else f"http://u/{i}"} for i in range(1, 10)]
         assert len(repo.get_by_generation_id("GEN_EMP106")) == 0
         with pytest.raises(UploadedArtifactValidationError):
@@ -1196,7 +1232,7 @@ class TestScenarios98To109:
         assert len(repo.get_by_generation_id("GEN_EMP106")) == 0
 
     def test_scenario_107_record_artifacts_rejects_empty_generation_id(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         artifacts = [{"slide_number": i, "public_url": f"http://cdn/{i}"} for i in range(1, 10)]
         assert len(repo.get_by_generation_id("   ")) == 0
         with pytest.raises(UploadedArtifactValidationError):
@@ -1204,14 +1240,14 @@ class TestScenarios98To109:
         assert len(repo.get_by_generation_id("   ")) == 0
 
     def test_scenario_108_record_artifacts_rejects_empty_uploaded_at(self, mock_db):
-        repo = UploadedArtifactRepository()
+        repo = SQLiteUploadedArtifactRepository()
         artifacts = [{"slide_number": i, "public_url": f"http://cdn/{i}"} for i in range(1, 10)]
         assert len(repo.get_by_generation_id("GEN_EMP108")) == 0
         with pytest.raises(UploadedArtifactValidationError):
             repo.record_artifacts("GEN_EMP108", artifacts, "   ")
         assert len(repo.get_by_generation_id("GEN_EMP108")) == 0
     def test_scenario_109_malformed_replay_leaves_existing_intact(self, mock_db):
-            repo = UploadedArtifactRepository()
+            repo = SQLiteUploadedArtifactRepository()
             valid_9 = [{"slide_number": i, "public_url": f"http://u/{i}"} for i in range(1, 10)]
             repo.record_artifacts("GEN_INTACT109", valid_9, "2026-07-12 10:00:00")
             assert len(repo.get_by_generation_id("GEN_INTACT109")) == 9
@@ -1223,7 +1259,7 @@ class TestScenarios98To109:
 
 class TestScenarios110To112:
     def test_scenario_110_precedence_a_reconciles_published_at_drift(self, mock_db, sample_github_headers):
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         pub_repo.record_publication("GEN_DRIFT110", "media_999", "http://canonical.permalink", "2026-07-12 15:30:00")
 
         rows = [
@@ -1244,7 +1280,7 @@ class TestScenarios110To112:
         assert ws.data[0]["Published At"] == "2026-07-12 15:30:00"
 
     def test_scenario_111_precedence_a_structural_checks_abort(self, mock_db, sample_github_headers):
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         pub_repo.record_publication("GEN_MALFORMED111", "media_m", "http://perm", "2026-07-12 16:00:00")
 
         rows = [
@@ -1260,7 +1296,7 @@ class TestScenarios110To112:
         assert res["reason"] == "INVALID_PUBLISHED_BATCH_COUNT"
 
     def test_scenario_112_already_published_terminal_state(self, mock_db, sample_github_headers, sample_7_draft_rows, tmp_path):
-        pub_repo = PublicationRepository()
+        pub_repo = SQLitePublicationRepository()
         pub_repo.record_publication("GEN_TERMINAL112", "media_112", "http://post.112", "2026-07-12 12:00:00")
         rows = [
             {

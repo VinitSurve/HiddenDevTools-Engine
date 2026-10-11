@@ -25,14 +25,14 @@ def isolate_publishing_db(monkeypatch, tmp_path_factory):
     
     # Patch the bound defaults of __init__ to prevent default-argument binding bugs
     try:
-        from features.publishing.upload_attempt_repository import UploadAttemptRepository
-        monkeypatch.setattr(UploadAttemptRepository.__init__, "__defaults__", (db_file,))
+        from features.publishing.upload_attempt_repository import SQLiteUploadAttemptRepository
+        monkeypatch.setattr(SQLiteUploadAttemptRepository.__init__, "__defaults__", (db_file,))
     except ImportError:
         pass
 
     try:
-        from features.publishing.instagram_attempt_repository import InstagramPublicationAttemptRepository
-        monkeypatch.setattr(InstagramPublicationAttemptRepository.__init__, "__defaults__", (db_file,))
+        from features.publishing.instagram_attempt_repository import SQLiteInstagramPublicationAttemptRepository
+        monkeypatch.setattr(SQLiteInstagramPublicationAttemptRepository.__init__, "__defaults__", (db_file,))
     except ImportError:
         pass
     

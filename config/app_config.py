@@ -53,6 +53,7 @@ class HealthConfig:
 
 @dataclass(frozen=True)
 class RuntimeConfig:
+    persistence_backend: str = field(default_factory=lambda: os.getenv("PERSISTENCE_BACKEND", "sqlite").lower().strip())
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
     retry: RetryConfig = field(default_factory=RetryConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)

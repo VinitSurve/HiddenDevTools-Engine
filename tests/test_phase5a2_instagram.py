@@ -28,6 +28,7 @@ def test_scenario_014_015_016_017_authorized_retry():
     }
     
     svc = InstagramService(access_token="test", ig_user_id="123")
+    svc.check_publishing_limit = Mock(return_value={"quota_usage": 0})
     svc.publish = Mock(return_value={"success": True, "media_id": "NEW_MEDIA_ID"})
     svc.verify_publication = Mock(return_value={"verified": True, "permalink": "new_link", "timestamp": "time"})
     svc.create_media_container = Mock()
@@ -59,6 +60,7 @@ def test_scenario_018_authorized_retry_timeout():
     }
     
     svc = InstagramService(access_token="test", ig_user_id="123")
+    svc.check_publishing_limit = Mock(return_value={"quota_usage": 0})
     svc.publish = Mock(side_effect=requests.exceptions.Timeout("Timeout"))
     
     res = svc.publish_carousel("GEN_1", ["url1", "url2"], attempt_repo)

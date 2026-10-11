@@ -273,10 +273,19 @@ def render_slide(niche_id: str, req: RenderRequest) -> dict:
         raise HTTPException(status_code=422, detail=f"Invalid layout override: {exc}") from exc
 
     try:
+        from adapters.niche_adapter import NicheAdapter
+        adapted_payloads = NicheAdapter.adapt_rows(niche["label"], [req.sample_data])
+        if not adapted_payloads:
+            raise ValueError("Payload adaptation returned empty list")
+        payload = adapted_payloads[0].__dict__
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Failed to adapt payload using NicheAdapter: {exc}") from exc
+
+    try:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Render exactly one content slide
             img_path = os.path.join(tmpdir, "02_Content.png")
-            renderer.render_content_slide(req.sample_data, 2, niche["template"], img_path, regions_override=validated_override)
+            renderer.render_content_slide(payload, 2, niche["template"], img_path, regions_override=validated_override)
             
             if not os.path.exists(img_path):
                 raise HTTPException(status_code=500, detail="Renderer produced no output files")

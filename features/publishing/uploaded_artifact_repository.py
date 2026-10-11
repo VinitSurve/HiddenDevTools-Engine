@@ -12,7 +12,9 @@ from features.publishing.migrations_runner import run_publishing_migrations
 
 logger = logging.getLogger(__name__)
 
-class UploadedArtifactRepository:
+from features.publishing.contracts import UploadedArtifactRepository
+
+class SQLiteUploadedArtifactRepository(UploadedArtifactRepository):
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or os.path.join(os.path.dirname(__file__), "..", "..", PUBLISHING_DB_PATH)
         run_publishing_migrations(self.db_path)

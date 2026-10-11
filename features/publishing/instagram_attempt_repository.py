@@ -13,7 +13,9 @@ class InstagramAttemptConflictError(Exception):
 class InvalidStateTransitionError(Exception):
     pass
 
-class InstagramPublicationAttemptRepository:
+from features.publishing.contracts import InstagramPublicationAttemptRepository
+
+class SQLiteInstagramPublicationAttemptRepository(InstagramPublicationAttemptRepository):
     VALID_STATES = {
         'CHILDREN_CREATED',
         'CAROUSEL_CREATED',
