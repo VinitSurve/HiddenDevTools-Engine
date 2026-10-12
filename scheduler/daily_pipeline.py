@@ -11,7 +11,8 @@ class DailyPipeline:
         self.publisher = Publisher(self.queue)
 
     def run_today(self, override_day=None):
-        today_date = datetime.datetime.now().strftime("%Y-%m-%d")
+        from utils.timezone import get_ist_date_str
+        today_date = get_ist_date_str()
         niche = ContentSelector.get_todays_niche(override_day=override_day)
         
         if not niche:

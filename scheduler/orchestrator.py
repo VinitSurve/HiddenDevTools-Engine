@@ -41,11 +41,13 @@ class SchedulerOrchestrator:
 
         if override_date:
             now = datetime.datetime.strptime(override_date, "%Y-%m-%d")
+            date_str = override_date
+            weekday = override_day if override_day is not None else now.weekday()
         else:
-            now = datetime.datetime.now()
-            
-        date_str = now.strftime("%Y-%m-%d")
-        weekday = override_day if override_day is not None else now.weekday()
+            from utils.timezone import get_ist_now
+            now = get_ist_now()
+            date_str = now.strftime("%Y-%m-%d")
+            weekday = override_day if override_day is not None else now.weekday()
         
         # 1. Determine niche
         config = Registry.get_config_for_day(weekday)

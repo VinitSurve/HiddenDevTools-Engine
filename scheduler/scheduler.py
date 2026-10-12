@@ -1,4 +1,14 @@
 import os
+import sys
+from pathlib import Path
+
+# Ensure repository root is at head of sys.path when executed directly as `python scheduler/scheduler.py`
+_repo_root = str(Path(__file__).resolve().parent.parent)
+if sys.path and sys.path[0] == str(Path(__file__).resolve().parent):
+    sys.path[0] = _repo_root
+elif _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+
 import argparse
 import logging
 import json
@@ -10,7 +20,7 @@ from scheduler.instagram_publisher import InstagramGraphPublisher, PublishResult
 from services.completion_service import CompletionService
 from services.observability import setup_logging, PipelineContext
 from config.app_config import config
-from scheduler.startup_validator import validate_startup
+from scheduler.startup_validator import validate_startup, StartupValidationError
 
 def main():
     setup_logging()
@@ -31,12 +41,25 @@ def main():
     print("=======================================")
     
     parser = argparse.ArgumentParser(description="HiddenDevTools Daily Scheduler")
+    parser.add_argument("--validate-only", action="store_true", help="Run startup validations and exit without executing pipeline")
     parser.add_argument("--run-today", action="store_true", help="Run the pipeline for today's niche")
     parser.add_argument("--override-day", type=int, choices=range(7), help="DEPRECATED: Override the day of week (0=Mon, 6=Sun)")
     parser.add_argument("--day", type=str, choices=["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"], help="Override the day of week (e.g. monday)")
     parser.add_argument("--date", type=str, help="Override the date (YYYY-MM-DD)")
     
     args = parser.parse_args()
+
+    if args.validate_only:
+        try:
+            validate_startup(read_only=True)
+            print("Startup validation succeeded.")
+            return 0
+        except StartupValidationError as e:
+            logger.error(f"Startup validation failed: {e}")
+            return 1
+        except Exception as e:
+            logger.error(f"Startup validation encountered unexpected error: {e}")
+            return 1
     
     override_day = args.override_day
     override_date = args.date
@@ -207,4 +230,6 @@ def main():
         print("Scheduler service started. (Use --run-today to trigger immediately)")
 
 if __name__ == "__main__":
-    main()
+    rc = main()
+    if rc is not None:
+        sys.exit(rc)

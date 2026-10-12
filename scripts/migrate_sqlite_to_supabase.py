@@ -25,37 +25,41 @@ def get_supabase_url(table: str) -> str:
     return f"{config.services.supabase.url.rstrip('/')}/rest/v1/{table}"
 
 def verify_table(table_name: str, sqlite_rows: list, pk_cols: list, dry_run: bool):
+    logger.info(f"--- {table_name} ---")
+    logger.info(f"SQLite rows: {len(sqlite_rows)}")
+    if dry_run:
+        logger.info("[DRY-RUN] Remote verification skipped. 0 network calls executed.")
+        logger.info("-------------------")
+        return
+
     resp = requests.get(get_supabase_url(table_name), headers=get_supabase_headers())
     supabase_rows = resp.json() if resp.status_code == 200 and resp.json() else []
     
     # We will just report stats. The migration itself handles conflicts.
-    logger.info(f"--- {table_name} ---")
-    logger.info(f"SQLite rows: {len(sqlite_rows)}")
     logger.info(f"Supabase rows: {len(supabase_rows)}")
     
-    if not dry_run:
-        # If not dry run, we verify everything matches
-        sqlite_dict = {}
-        for r in sqlite_rows:
-            pk = tuple(r[k] for k in pk_cols)
-            sqlite_dict[pk] = r
-            
-        supabase_dict = {}
-        for r in supabase_rows:
-            pk = tuple(r[k] for k in pk_cols)
-            supabase_dict[pk] = r
-            
-        matched = 0
-        conflicts = 0
+    # If not dry run, we verify everything matches
+    sqlite_dict = {}
+    for r in sqlite_rows:
+        pk = tuple(r[k] for k in pk_cols)
+        sqlite_dict[pk] = r
         
-        for pk, sq_row in sqlite_dict.items():
-            if pk in supabase_dict:
-                # Naive match check (not all fields might exactly match if defaults differ, but we check critical ones)
-                matched += 1
-                
-        logger.info(f"Matched (PK exist): {matched}")
-        logger.info(f"Conflicts (if any discrepancies checked manually): {conflicts}")
-        logger.info("-------------------")
+    supabase_dict = {}
+    for r in supabase_rows:
+        pk = tuple(r[k] for k in pk_cols)
+        supabase_dict[pk] = r
+        
+    matched = 0
+    conflicts = 0
+    
+    for pk, sq_row in sqlite_dict.items():
+        if pk in supabase_dict:
+            # Naive match check (not all fields might exactly match if defaults differ, but we check critical ones)
+            matched += 1
+            
+    logger.info(f"Matched (PK exist): {matched}")
+    logger.info(f"Conflicts (if any discrepancies checked manually): {conflicts}")
+    logger.info("-------------------")
 
 
 def migrate_published_generations(dry_run: bool):

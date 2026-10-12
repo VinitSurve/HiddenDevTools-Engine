@@ -2,7 +2,7 @@ import os
 import sys
 import logging
 from config.app_config import config
-from features.publishing.migrations_runner import run_publishing_migrations
+from features.publishing.migrations_runner import run_publishing_migrations, validate_publishing_migrations
 from settings import FONTS_DIR, TEMPLATES, OUTPUT_DIR
 
 logger = logging.getLogger(__name__)
@@ -10,11 +10,13 @@ logger = logging.getLogger(__name__)
 class StartupValidationError(Exception):
     pass
 
-def validate_startup():
-    logger.info("Running startup validation...")
+def validate_startup(read_only: bool = False):
+    logger.info(f"Running startup validation (read_only={read_only})...")
     
     # 1. Check directories
     if not os.path.exists(OUTPUT_DIR):
+        if read_only:
+            raise StartupValidationError(f"Output directory {OUTPUT_DIR} does not exist.")
         try:
             os.makedirs(OUTPUT_DIR)
             logger.info(f"Created output directory at {OUTPUT_DIR}")
@@ -43,10 +45,14 @@ def validate_startup():
         
     # 5. Check database migrations
     try:
-        run_publishing_migrations()
-        logger.info("Database migrations up-to-date.")
+        if read_only:
+            validate_publishing_migrations()
+            logger.info("Database migrations verified (read-only mode).")
+        else:
+            run_publishing_migrations()
+            logger.info("Database migrations up-to-date.")
     except Exception as e:
-        raise StartupValidationError(f"Failed to run database migrations: {e}")
+        raise StartupValidationError(f"Failed to check database migrations: {e}")
         
     logger.info("Startup validation passed.")
 

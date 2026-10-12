@@ -14,9 +14,13 @@ DAY_TO_NICHE_MAP = {
 class ContentSelector:
     @staticmethod
     def get_todays_niche(override_day: int = None) -> str:
-        \"\"\"
+        """
         Determines the niche to publish based on the day of the week.
         Returns the niche string, or None if no post is scheduled for today.
-        \"\"\"
-        day = override_day if override_day is not None else datetime.datetime.now().weekday()
+        """
+        if override_day is not None:
+            day = override_day
+        else:
+            from utils.timezone import get_ist_weekday
+            day = get_ist_weekday()
         return DAY_TO_NICHE_MAP.get(day)
