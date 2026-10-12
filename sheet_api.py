@@ -1,3 +1,4 @@
+import os
 import gspread
 from datetime import datetime
 from google.oauth2.service_account import Credentials
@@ -27,16 +28,88 @@ SCOPES = [
 ]
 
 # ==========================================================
-# Credentials
+# Lazy Google Sheets Client & Spreadsheet
 # ==========================================================
 
-creds = Credentials.from_service_account_file(
-    config.services.google_sheets.service_account_file,
-    scopes=SCOPES
-)
+_client = None
+_spreadsheet = None
+_sheets = {}
 
-client = gspread.authorize(creds)
-spreadsheet = client.open_by_key(config.services.google_sheets.spreadsheet_id)
+
+def get_client():
+    """Lazily load credentials and return an authorized gspread client."""
+    global _client
+    if _client is not None:
+        return _client
+
+    sa_file = config.services.google_sheets.service_account_file
+    if not sa_file or not os.path.exists(sa_file):
+        raise FileNotFoundError(f"Service account file not found: {sa_file}")
+
+    creds = Credentials.from_service_account_file(
+        sa_file,
+        scopes=SCOPES
+    )
+    _client = gspread.authorize(creds)
+    return _client
+
+
+def set_client(client_instance):
+    """Test seam: inject a mock or custom gspread client."""
+    global _client, _spreadsheet, _sheets
+    _client = client_instance
+    _spreadsheet = None
+    _sheets = {}
+
+
+def reset_client():
+    """Reset cached client and worksheet instances."""
+    global _client, _spreadsheet, _sheets
+    _client = None
+    _spreadsheet = None
+    _sheets = {}
+
+
+def get_spreadsheet():
+    """Lazily fetch and cache the target spreadsheet instance."""
+    global _spreadsheet
+    if _spreadsheet is not None:
+        return _spreadsheet
+
+    c = get_client()
+    _spreadsheet = c.open_by_key(config.services.google_sheets.spreadsheet_id)
+    return _spreadsheet
+
+
+class _LazyClientProxy:
+    """Proxy object so existing code accessing `sheet_api.client` works lazily without side effects."""
+    def __getattr__(self, name):
+        return getattr(get_client(), name)
+
+    def __bool__(self):
+        return True
+
+
+class _LazySpreadsheetProxy:
+    """Proxy object so existing code accessing `sheet_api.spreadsheet` works lazily without side effects."""
+    def __getattr__(self, name):
+        return getattr(get_spreadsheet(), name)
+
+    def __bool__(self):
+        return True
+
+
+client = _LazyClientProxy()
+spreadsheet = _LazySpreadsheetProxy()
+
+
+def __getattr__(name):
+    if name == "creds":
+        sa_file = config.services.google_sheets.service_account_file
+        if not sa_file or not os.path.exists(sa_file):
+            raise FileNotFoundError(f"Service account file not found: {sa_file}")
+        return Credentials.from_service_account_file(sa_file, scopes=SCOPES)
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 # ==========================================================
@@ -54,22 +127,18 @@ def get_sheet_id():
 # Open Sheet
 # ==========================================================
 
-_sheets = {}
-
 def open_sheet(sheet_name=None):
 
     global _sheets
 
-    spreadsheet = client.open_by_key(
-        config.services.google_sheets.spreadsheet_id
-    )
+    sheet = get_spreadsheet()
 
     if sheet_name is None:
-        sheet_name = spreadsheet.sheet1.title
+        sheet_name = sheet.sheet1.title
 
     if sheet_name not in _sheets:
 
-        _sheets[sheet_name] = spreadsheet.worksheet(
+        _sheets[sheet_name] = sheet.worksheet(
             sheet_name
         )
 

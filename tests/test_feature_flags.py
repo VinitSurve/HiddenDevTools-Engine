@@ -15,7 +15,17 @@ class MockCompletionService:
         return True
 
 class MockJob:
-    generation_id = "mock"
+    generation_id: str = "mock"
+    batch_id: str = "GEN_MOCK"
+    date: str = "2026-10-11"
+    weekday: int = 0
+    niche: str = "github_repo"
+    sheet_name: str = "Github Repos"
+    caption: str = "Mock Caption"
+    hashtags: list = []
+    artifacts: list = []
+    hashes: dict = {}
+    status: str = "ORCHESTRATED"
 
 class MockOrchestrator:
     def __init__(self, **kwargs):
@@ -23,7 +33,8 @@ class MockOrchestrator:
     def run_today(self, *args, **kwargs):
         return MockJob()
 
-def test_dry_run_feature_flag(monkeypatch):
+def test_dry_run_feature_flag(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
     import config.app_config
     
     # Mock config
