@@ -64,7 +64,7 @@ class StorageService(ABC):
             local_sha256 = hashlib.sha256(f.read()).hexdigest()
 
         attempt = attempt_repo.get_attempt(generation_id, slide_number)
-        
+
         # Check remote existence
         remote_exists = self.verify_url(public_url)
 
@@ -81,8 +81,35 @@ class StorageService(ABC):
                 raise RemoteArtifactConflictError(f"SHA-256 mismatch for {filename}: local {local_sha256} vs persisted {attempt['sha256_hash']}")
         else:
             if remote_exists:
-                raise UntrackedRemoteArtifactError(f"Remote artifact {public_url} exists but is untracked by UploadAttemptRepository")
-        
+                remote_sha256 = self.get_remote_sha256(remote_path, public_url)
+                if remote_sha256 is not None:
+                    if remote_sha256 == local_sha256:
+                        logger.info(f"Recovered untracked remote artifact for {filename}: SHA-256 matched.")
+                        attempt_repo.record_attempt(
+                            generation_id=generation_id,
+                            slide_number=slide_number,
+                            remote_path=remote_path,
+                            sha256_hash=local_sha256,
+                            public_url=public_url,
+                            uploaded_at=datetime.now(timezone.utc).isoformat()
+                        )
+                        return {
+                            "success": True,
+                            "filename": filename,
+                            "remote_path": remote_path,
+                            "public_url": public_url,
+                            "recovered": True,
+                        }
+                    else:
+                        raise RemoteArtifactConflictError(
+                            f"Remote artifact {public_url} exists but content SHA-256 ({remote_sha256}) "
+                            f"does not match local {filename} ({local_sha256}). Untracked conflict."
+                        )
+                else:
+                    raise UntrackedRemoteArtifactError(
+                        f"Remote artifact {public_url} exists but identity could not be verified; untracked by UploadAttemptRepository"
+                    )
+
         logger.info(f"Uploading {filename} -> {remote_path} ({content_type})")
 
         try:
@@ -96,7 +123,7 @@ class StorageService(ABC):
 
             if response.status_code in (200, 201):
                 logger.info(f"  ✓ Uploaded {filename}")
-                
+
                 attempt_repo.record_attempt(
                     generation_id=generation_id,
                     slide_number=slide_number,
@@ -105,7 +132,7 @@ class StorageService(ABC):
                     public_url=public_url,
                     uploaded_at=datetime.now(timezone.utc).isoformat()
                 )
-                
+
                 return {
                     "success": True,
                     "filename": filename,
@@ -167,7 +194,7 @@ class StorageService(ABC):
                 "files": [],
                 "error": f"No image files in folder: {local_folder}",
             }
-            
+
         if len(files) != 9:
             return {
                 "success": False,
@@ -233,7 +260,7 @@ class StorageService(ABC):
             }
 
         urls = [r["public_url"] for r in results]
-        
+
         # Verify all URLs reachability
         logger.info(f"Verifying {len(urls)} public URLs reachability...")
         for url in urls:
@@ -274,6 +301,33 @@ class StorageService(ABC):
         - Content-Type begins with image/
         """
         pass
+
+    def get_remote_sha256(
+        self,
+        remote_path: str,
+        public_url: Optional[str] = None,
+        timeout: int = 15,
+    ) -> Optional[str]:
+        """
+        Safely fetch remote artifact content and compute SHA-256 for identity verification.
+        Returns None if remote artifact cannot be retrieved or verified.
+        """
+        import hashlib
+        url = public_url or self.get_public_url(remote_path)
+        if not url:
+            return None
+        try:
+            with requests.get(url, stream=True, timeout=timeout) as resp:
+                if resp.status_code != 200:
+                    return None
+                hasher = hashlib.sha256()
+                for chunk in resp.iter_content(chunk_size=65536):
+                    if chunk:
+                        hasher.update(chunk)
+                return hasher.hexdigest()
+        except Exception as exc:
+            logger.warning(f"Could not retrieve remote artifact {url} to verify SHA-256: {exc}")
+            return None
 
     @abstractmethod
     def delete_folder(
@@ -360,7 +414,7 @@ class SupabaseStorage(StorageService):
             local_sha256 = hashlib.sha256(f.read()).hexdigest()
 
         attempt = attempt_repo.get_attempt(generation_id, slide_number)
-        
+
         # Check remote existence
         remote_exists = self.verify_url(public_url)
 
@@ -377,8 +431,35 @@ class SupabaseStorage(StorageService):
                 raise RemoteArtifactConflictError(f"SHA-256 mismatch for {filename}: local {local_sha256} vs persisted {attempt['sha256_hash']}")
         else:
             if remote_exists:
-                raise UntrackedRemoteArtifactError(f"Remote artifact {public_url} exists but is untracked by UploadAttemptRepository")
-        
+                remote_sha256 = self.get_remote_sha256(remote_path, public_url)
+                if remote_sha256 is not None:
+                    if remote_sha256 == local_sha256:
+                        logger.info(f"Recovered untracked remote artifact for {filename}: SHA-256 matched.")
+                        attempt_repo.record_attempt(
+                            generation_id=generation_id,
+                            slide_number=slide_number,
+                            remote_path=remote_path,
+                            sha256_hash=local_sha256,
+                            public_url=public_url,
+                            uploaded_at=datetime.now(timezone.utc).isoformat()
+                        )
+                        return {
+                            "success": True,
+                            "filename": filename,
+                            "remote_path": remote_path,
+                            "public_url": public_url,
+                            "recovered": True,
+                        }
+                    else:
+                        raise RemoteArtifactConflictError(
+                            f"Remote artifact {public_url} exists but content SHA-256 ({remote_sha256}) "
+                            f"does not match local {filename} ({local_sha256}). Untracked conflict."
+                        )
+                else:
+                    raise UntrackedRemoteArtifactError(
+                        f"Remote artifact {public_url} exists but identity could not be verified; untracked by UploadAttemptRepository"
+                    )
+
         logger.info(f"Uploading {filename} -> {remote_path} ({content_type})")
 
         try:
@@ -392,7 +473,7 @@ class SupabaseStorage(StorageService):
 
             if response.status_code in (200, 201):
                 logger.info(f"  ✓ Uploaded {filename}")
-                
+
                 attempt_repo.record_attempt(
                     generation_id=generation_id,
                     slide_number=slide_number,
@@ -401,7 +482,7 @@ class SupabaseStorage(StorageService):
                     public_url=public_url,
                     uploaded_at=datetime.now(timezone.utc).isoformat()
                 )
-                
+
                 return {
                     "success": True,
                     "filename": filename,
@@ -463,7 +544,7 @@ class SupabaseStorage(StorageService):
                 "files": [],
                 "error": f"No image files in folder: {local_folder}",
             }
-            
+
         if len(files) != 9:
             return {
                 "success": False,
@@ -529,7 +610,7 @@ class SupabaseStorage(StorageService):
             }
 
         urls = [r["public_url"] for r in results]
-        
+
         # Verify all URLs reachability
         logger.info(f"Verifying {len(urls)} public URLs reachability...")
         for url in urls:

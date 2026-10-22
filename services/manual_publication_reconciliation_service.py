@@ -38,16 +38,16 @@ class ManualPublicationReconciliationService:
             raise ValueError(f"No instagram publication attempt found for {generation_id}")
 
         state = attempt['publish_state']
-        if state not in ('PUBLISHED_MEDIA_KNOWN', 'PUBLISH_OUTCOME_UNKNOWN'):
+        if state not in ('PUBLISHED_MEDIA_KNOWN', 'PUBLISH_OUTCOME_UNKNOWN', 'PUBLISHED_VERIFIED'):
             raise ValueError(f"Cannot manually reconcile from state {state}")
 
         persisted_media_id = attempt.get('media_id')
         final_media_id = None
 
-        if state == 'PUBLISHED_MEDIA_KNOWN':
+        if state in ('PUBLISHED_MEDIA_KNOWN', 'PUBLISHED_VERIFIED'):
             if not persisted_media_id:
                 # This should be impossible due to repository constraints, but defensively check
-                raise ValueError("PUBLISHED_MEDIA_KNOWN attempt is missing its media_id")
+                raise ValueError(f"{state} attempt is missing its media_id")
                 
             if verified_media_id is not None:
                 if verified_media_id != persisted_media_id:
@@ -76,7 +76,7 @@ class ManualPublicationReconciliationService:
             generation_id=generation_id,
             media_id=final_media_id,
             permalink=verified_permalink,
-            canonical_time=verified_published_at
+            published_at=verified_published_at
         )
 
         # Transition the attempt state

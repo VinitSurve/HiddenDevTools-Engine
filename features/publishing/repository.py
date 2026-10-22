@@ -21,11 +21,16 @@ class SQLitePublicationRepository(PublicationRepository):
         self.db_path = db_path or os.path.join(os.path.dirname(__file__), "..", "..", PUBLISHING_DB_PATH)
         run_publishing_migrations(self.db_path)
 
+    def _get_connection(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA foreign_keys = ON;")
+        return conn
+
     def get_by_generation_id(self, generation_id: str) -> Optional[Dict]:
         """Get publication record by generation_id."""
         if not generation_id or not isinstance(generation_id, str):
             return None
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("""
@@ -58,7 +63,7 @@ class SQLitePublicationRepository(PublicationRepository):
         if not generation_id or not media_id or not permalink or not published_at:
             raise ValueError("All parameters must be non-empty strings.")
 
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("BEGIN IMMEDIATE")
@@ -98,7 +103,7 @@ class SQLitePublicationRepository(PublicationRepository):
 
     def update_sheet_sync_state(self, generation_id: str, state: str, error: Optional[str] = None) -> None:
         """Update the sheet sync state for a publication."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("""
@@ -115,7 +120,7 @@ class SQLitePublicationRepository(PublicationRepository):
 
     def get_pending_sheet_updates(self):
         """Get all publications that have pending or failed sheet updates."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("""

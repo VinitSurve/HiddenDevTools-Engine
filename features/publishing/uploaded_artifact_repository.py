@@ -19,11 +19,16 @@ class SQLiteUploadedArtifactRepository(UploadedArtifactRepository):
         self.db_path = db_path or os.path.join(os.path.dirname(__file__), "..", "..", PUBLISHING_DB_PATH)
         run_publishing_migrations(self.db_path)
 
+    def _get_connection(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA foreign_keys = ON;")
+        return conn
+
     def get_by_generation_id(self, generation_id: str) -> List[Dict]:
         """Return list of uploaded artifacts [{slide_number, public_url, uploaded_at}] sorted by slide_number."""
         if not generation_id or not isinstance(generation_id, str):
             return []
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("""
@@ -65,7 +70,7 @@ class SQLiteUploadedArtifactRepository(UploadedArtifactRepository):
             if not isinstance(slide_num, int) or isinstance(slide_num, bool):
                 raise UploadedArtifactValidationError("slide_number must be an integer between 1 and 9.")
             slide_numbers.add(slide_num)
-            
+
             url = item.get("public_url")
             if not isinstance(url, str) or not url.strip():
                 raise UploadedArtifactValidationError("public_url must be a non-empty string.")
@@ -77,7 +82,7 @@ class SQLiteUploadedArtifactRepository(UploadedArtifactRepository):
         sorted_input = sorted(artifacts, key=lambda x: x["slide_number"])
 
         # Enter SQL transaction
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("BEGIN IMMEDIATE")

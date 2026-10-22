@@ -208,7 +208,7 @@ class InstagramService:
     def send_message(self, recipient_id: str, text: str) -> "MessageResult":
         """
         Sends a Direct Message to an Instagram user using the Messaging API.
-        
+
         POST /{page_id}/messages or /me/messages
           recipient={"id": "<IGSID>"}
           message={"text": "..."}
@@ -216,22 +216,22 @@ class InstagramService:
         from features.engagement.models import MessageResult
 
         logger.info(f"Sending DM to {recipient_id}...")
-        
+
         # Meta expects the endpoint on the Page ID (or /me which resolves to page)
         # when using Page Access Token with IG Messaging API
         endpoint = f"{self.page_id}/messages" if self.page_id else "me/messages"
-        
+
         payload = {
             "recipient": {"id": recipient_id},
             "message": {"text": text}
         }
-        
+
         response = self._make_request(
             "POST",
             endpoint,
             json_data=payload
         )
-        
+
         if "error" in response:
             error = response["error"]
             code = error.get("code")
@@ -244,7 +244,7 @@ class InstagramService:
                 http_status=None,
                 raw_response=str(error)
             )
-            
+
         message_id = response.get("message_id")
         if not message_id:
             return MessageResult(
@@ -256,7 +256,7 @@ class InstagramService:
                 http_status=None,
                 raw_response=str(response)
             )
-            
+
         logger.info(f"  ✓ DM Sent! Message ID: {message_id}")
         return MessageResult(
             success=True,
@@ -543,14 +543,14 @@ class InstagramService:
         )
         if "error" in response:
             return {"success": False, "error": response["error"]}
-            
+
         data = response.get("data", [])
         if not data:
             return {"success": True, "quota_usage": 0, "quota_total": 25}
-            
+
         usage = data[0].get("quota_usage", 0)
         total = data[0].get("config", {}).get("quota_total", 25)
-        
+
         logger.info(f"Instagram Publishing Quota: {usage}/{total} used.")
         return {"success": True, "quota_usage": usage, "quota_total": total}
 
@@ -602,7 +602,7 @@ class InstagramService:
         """
         Verify that a published media object actually exists on Instagram
         and is queryable via Graph API before writing metadata to Sheets.
-        
+
         GET /{media-id}?fields=id,permalink,media_type,timestamp
         """
         logger.info(f"Verifying published object exists on Instagram: {media_id}...")
@@ -622,7 +622,7 @@ class InstagramService:
                 }
             logger.warning(f"Publication verification attempt {attempt}/{max_retries} did not confirm object yet. Retrying in {retry_delay}s...")
             time.sleep(retry_delay)
-            
+
         logger.error(f"  ✗ Could not verify published object {media_id} after {max_retries} attempts.")
         return {"verified": False, "permalink": ""}
 
@@ -643,12 +643,12 @@ class InstagramService:
         Full carousel publishing orchestration enforcing strict monotonic fail-closed states.
         """
         import requests
-        
+
         attempt = attempt_repo.get_attempt(generation_id)
-        
+
         container_ids = []
         creation_id = None
-        
+
         if attempt:
             state = attempt['publish_state']
             if state in ('PUBLISH_OUTCOME_UNKNOWN', 'PUBLISHED_MEDIA_KNOWN', 'PUBLISHED_VERIFIED'):
@@ -690,15 +690,19 @@ class InstagramService:
                 return {"success": False, "error": f"Carousel container creation failed: {carousel_result.get('error')}"}
 
             creation_id = carousel_result["creation_id"]
-            
+
             attempt_repo.transition_state(generation_id, 'CAROUSEL_CREATED', carousel_creation_id=creation_id)
 
             if not self.wait_for_container(creation_id):
                 return {"success": False, "error": f"Carousel container {creation_id} failed or timed out."}
 
-        # Before media_publish
-        attempt_repo.transition_state(generation_id, 'PUBLISH_REQUESTED')
-        
+        # Before media_publish: Claim transition atomically
+        try:
+            attempt_repo.transition_state(generation_id, 'PUBLISH_REQUESTED')
+        except Exception as exc:
+            logger.error(f"Cannot claim PUBLISH_REQUESTED for {generation_id}: {exc}")
+            return {"success": False, "error": f"Failed to claim publish lock: {exc}"}
+
         # Check quota limit before publishing
         quota = self.check_publishing_limit()
         if quota.get("success"):
@@ -708,14 +712,14 @@ class InstagramService:
                 logger.error(f"Quota exhausted ({usage}/{total}). Cannot publish {generation_id} right now. Transitioning to PUBLISH_RETRY_AUTHORIZED.")
                 attempt_repo.transition_state(generation_id, 'PUBLISH_RETRY_AUTHORIZED')
                 return {"success": False, "error": f"Publishing quota exhausted ({usage}/{total})."}
-        
+
         try:
             publish_result = self.publish(creation_id)
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
             logger.error(f"Network error during media_publish: {exc}. Transitioning to PUBLISH_OUTCOME_UNKNOWN.")
             attempt_repo.transition_state(generation_id, 'PUBLISH_OUTCOME_UNKNOWN')
             return {"success": False, "error": f"Network error during publish: {exc}"}
-            
+
         if not publish_result["success"]:
             # Depending on error, it could be ambiguous. For safety, fail closed to UNKNOWN if not specifically handled.
             error_code = publish_result.get("error_code")
@@ -725,18 +729,33 @@ class InstagramService:
         media_id = publish_result["media_id"]
 
         attempt_repo.transition_state(generation_id, 'PUBLISHED_MEDIA_KNOWN', media_id=media_id)
-        
+
         # Step 6: Verify publication & retrieve permalink
         verify_result = self.verify_publication(media_id)
+        is_verified = verify_result.get("verified", False)
         permalink = verify_result.get("permalink", "")
         if not permalink:
             permalink = self.get_permalink(media_id)
-            
+
         timestamp = verify_result.get("timestamp", "")
-            
+
+        if is_verified:
+            attempt_repo.transition_state(
+                generation_id,
+                'PUBLISHED_VERIFIED',
+                media_id=media_id,
+                permalink=permalink
+            )
+        else:
+            logger.warning(
+                f"Publication verification failed for {generation_id} with media_id {media_id}. "
+                "State remains PUBLISHED_MEDIA_KNOWN."
+            )
+
         return {
-            "success": True,
+            "success": is_verified,
             "media_id": media_id,
             "permalink": permalink,
-            "timestamp": timestamp
+            "timestamp": timestamp,
+            "verified": is_verified
         }

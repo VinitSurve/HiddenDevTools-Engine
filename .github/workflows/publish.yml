@@ -1,0 +1,145 @@
+name: Scheduled Instagram Publishing
+
+on:
+  schedule:
+    # 7:00 PM IST (Asia/Kolkata, UTC+05:30) = 13:30 UTC
+    # Runs Monday through Saturday (1-6). Sunday is intentionally excluded.
+    - cron: '30 13 * * 1-6'
+  workflow_dispatch:
+    inputs:
+      day:
+        description: 'Specific day of week (or "today" to infer from IST)'
+        required: false
+        default: 'today'
+        type: choice
+        options:
+          - today
+          - monday
+          - tuesday
+          - wednesday
+          - thursday
+          - friday
+          - saturday
+          - sunday
+      date:
+        description: 'Specific date override (YYYY-MM-DD, optional)'
+        required: false
+        default: ''
+        type: string
+      dry_run:
+        description: 'Run in DRY RUN mode (no live Instagram publication)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: publishing-engine
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish Daily Carousel
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate Secrets & Environment Preflight
+        run: |
+          python -c "
+          import os, sys, json
+
+          required_vars = [
+              'INSTAGRAM_ACCESS_TOKEN',
+              'INSTAGRAM_BUSINESS_ACCOUNT_ID',
+              'SUPABASE_URL',
+              'SUPABASE_SERVICE_ROLE_KEY',
+              'SPREADSHEET_ID'
+          ]
+          missing = [v for v in required_vars if not os.getenv(v, '').strip()]
+
+          sa_json = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON', '').strip()
+          sa_file = os.getenv('SERVICE_ACCOUNT_FILE', '').strip()
+          if not sa_json and not (sa_file and os.path.isfile(sa_file)):
+              missing.append('GOOGLE_SERVICE_ACCOUNT_JSON or SERVICE_ACCOUNT_FILE')
+          elif sa_json:
+              try:
+                  parsed = json.loads(sa_json)
+                  if 'private_key' not in parsed or 'client_email' not in parsed:
+                      missing.append('GOOGLE_SERVICE_ACCOUNT_JSON (missing keys)')
+              except Exception:
+                  missing.append('GOOGLE_SERVICE_ACCOUNT_JSON (invalid JSON)')
+
+          if missing:
+              print(f'::error::Missing or invalid production secrets: {missing}')
+              sys.exit(1)
+          print('All required production secrets verified successfully.')
+          "
+        env:
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID || secrets.INSTAGRAM_ACCOUNT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+
+      - name: Execute Daily Carousel Publishing Engine
+        run: |
+          CLI_ARGS="--run-today"
+
+          # Handle manual workflow dispatch overrides safely
+          INPUT_DAY="${{ inputs.day }}"
+          if [ -n "$INPUT_DAY" ] && [ "$INPUT_DAY" != "today" ]; then
+            CLI_ARGS="$CLI_ARGS --day $INPUT_DAY"
+          fi
+
+          INPUT_DATE="${{ inputs.date }}"
+          if [ -n "$INPUT_DATE" ]; then
+            CLI_ARGS="$CLI_ARGS --date $INPUT_DATE"
+          fi
+
+          echo "Executing scheduler: python scheduler/scheduler.py $CLI_ARGS"
+          python scheduler/scheduler.py $CLI_ARGS
+        env:
+          PERSISTENCE_BACKEND: "supabase"
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          ENABLE_PUBLISHING: ${{ inputs.dry_run && 'false' || 'true' }}
+          ENABLE_RENDERING: "true"
+          ENABLE_UPLOAD: "true"
+          ENABLE_COMPLETION: "true"
+          ENABLE_RECONCILIATION: "true"
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID || secrets.INSTAGRAM_ACCOUNT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          META_VERIFY_TOKEN: ${{ secrets.META_VERIFY_TOKEN || secrets.META_WEBHOOK_VERIFY_TOKEN }}
+          META_GRAPH_API_VERSION: ${{ secrets.META_GRAPH_API_VERSION || 'v23.0' }}
+
+      - name: Upload Audit Logs & Manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: publishing-run-artifacts-${{ github.run_id }}
+          path: |
+            scheduler_audit.json
+            output/**/manifest.json
+            output/**/scheduler_audit.json
+          retention-days: 14

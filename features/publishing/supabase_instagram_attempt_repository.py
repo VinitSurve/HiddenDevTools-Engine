@@ -33,7 +33,7 @@ class SupabaseInstagramPublicationAttemptRepository(InstagramPublicationAttemptR
         resp = requests.get(f"{self.url}?generation_id=eq.{generation_id}", headers=self.headers)
         resp.raise_for_status()
         data = resp.json()
-        
+
         if data:
             row = data[0]
             # Match SQLite behavior
@@ -54,7 +54,7 @@ class SupabaseInstagramPublicationAttemptRepository(InstagramPublicationAttemptR
             raise ValueError("generation_id must not be empty")
         if not child_creation_ids or len(child_creation_ids) != 9:
             raise ValueError("Must provide exactly 9 child_creation_ids")
-            
+
         data = {
             "generation_id": generation_id,
             "child_creation_ids": child_creation_ids,
@@ -62,7 +62,7 @@ class SupabaseInstagramPublicationAttemptRepository(InstagramPublicationAttemptR
             "created_at": self._now(),
             "updated_at": self._now()
         }
-        
+
         resp = requests.post(self.url, headers=self.headers, json=data)
         if resp.status_code == 409:
             pass # SQLite raised IntegrityError, requests raises HTTPError which is basically equivalent. We can let it raise_for_status
@@ -75,10 +75,10 @@ class SupabaseInstagramPublicationAttemptRepository(InstagramPublicationAttemptR
         existing = self.get_attempt(generation_id)
         if not existing:
             raise InstagramAttemptConflictError(f"Attempt not found for {generation_id}")
-            
+
         current_state = existing["publish_state"]
         existing_media_id = existing["media_id"]
-        
+
         updates = {
             "publish_state": new_state,
             "updated_at": self._now()
@@ -95,6 +95,17 @@ class SupabaseInstagramPublicationAttemptRepository(InstagramPublicationAttemptR
         elif new_state == 'PUBLISH_REQUESTED':
             if current_state not in ('CAROUSEL_CREATED', 'PUBLISH_RETRY_AUTHORIZED'):
                 raise InvalidStateTransitionError(f"Cannot transition from {current_state} to {new_state}")
+
+            # Atomic conditional update targeting only rows currently in acceptable source states
+            patch_url = f"{self.url}?generation_id=eq.{generation_id}&publish_state=in.(CAROUSEL_CREATED,PUBLISH_RETRY_AUTHORIZED)"
+            resp = requests.patch(patch_url, headers=self.headers, json=updates)
+            resp.raise_for_status()
+            data = resp.json()
+            if not data:
+                raise InstagramAttemptConflictError(
+                    f"Concurrency claim lost: generation {generation_id} could not be claimed for PUBLISH_REQUESTED"
+                )
+            return
 
         elif new_state == 'PUBLISHED_MEDIA_KNOWN':
             if current_state != 'PUBLISH_REQUESTED':
@@ -113,9 +124,9 @@ class SupabaseInstagramPublicationAttemptRepository(InstagramPublicationAttemptR
                 raise InvalidStateTransitionError(f"Cannot transition from {current_state} to {new_state}")
 
         elif new_state == 'PUBLISHED_VERIFIED':
-            if current_state not in ('PUBLISHED_MEDIA_KNOWN', 'PUBLISH_OUTCOME_UNKNOWN'):
+            if current_state not in ('PUBLISHED_MEDIA_KNOWN', 'PUBLISH_OUTCOME_UNKNOWN', 'PUBLISHED_VERIFIED'):
                 raise InvalidStateTransitionError(f"Cannot transition from {current_state} to {new_state}")
-            
+
             permalink = kwargs.get('permalink')
             if existing_media_id and 'media_id' in kwargs and kwargs['media_id'] and kwargs['media_id'] != existing_media_id:
                 raise InstagramAttemptConflictError("Cannot overwrite immutable media_id")

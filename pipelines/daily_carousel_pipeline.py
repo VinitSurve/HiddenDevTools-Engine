@@ -131,17 +131,17 @@ class DailyCarouselPipeline:
         if current_stage == "Uploaded":
             try:
                 pub_res = self.publisher_cb(gen_id) if self.publisher_cb else {}
-                
+
                 # Check for controlled fail-closed
                 if not pub_res.get("success", True):
                     # Do not mark_failed. Preserve monotonic state (Uploaded).
                     logger.error(f"Instagram publish aborted for {gen_id}: {pub_res.get('error')}")
                     return {"status": "ABORT_PUBLISH_FAILED", "generation_id": gen_id, "error": pub_res.get('error')}
-                
+
                 media_id = pub_res.get("media_id")
                 permalink = pub_res.get("permalink")
                 pub_timestamp = pub_res.get("timestamp", "")
-                
+
                 if not pub_timestamp:
                     pub_timestamp = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -149,7 +149,7 @@ class DailyCarouselPipeline:
                     # Defensive. Real failure would be caught above.
                     logger.error("Instagram publish missing media_id or permalink")
                     return {"status": "ABORT_PUBLISH_FAILED", "generation_id": gen_id}
-                
+
                 if self.pub_repo:
                     self.pub_repo.record_publication(gen_id, media_id, permalink, pub_timestamp)
             except Exception as e:
@@ -323,6 +323,7 @@ class DailyCarouselPipeline:
                         # If needed
                         pass
 
+                pub_repo.update_sheet_sync_state(gen_id, "SUCCESS")
                 logger.info(f"PUBLICATION_RECONCILED_TO_SHEET: Successfully reconciled {gen_id} across 7 rows.")
                 return {"status": "RECONCILED", "generation_id": gen_id}
 

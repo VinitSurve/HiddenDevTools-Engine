@@ -30,7 +30,9 @@ class SQLiteInstagramPublicationAttemptRepository(InstagramPublicationAttemptRep
         self.db_path = db_path
 
     def _get_connection(self):
-        return sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA foreign_keys = ON;")
+        return conn
 
     def _now(self):
         return datetime.now(timezone.utc).isoformat()
@@ -62,12 +64,12 @@ class SQLiteInstagramPublicationAttemptRepository(InstagramPublicationAttemptRep
             raise ValueError("generation_id must not be empty")
         if not child_creation_ids or len(child_creation_ids) != 9:
             raise ValueError("Must provide exactly 9 child_creation_ids")
-            
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO instagram_publication_attempts 
-                (generation_id, child_creation_ids, publish_state, created_at, updated_at) 
+                INSERT INTO instagram_publication_attempts
+                (generation_id, child_creation_ids, publish_state, created_at, updated_at)
                 VALUES (?, ?, 'CHILDREN_CREATED', ?, ?)
             """, (generation_id, json.dumps(child_creation_ids), self._now(), self._now()))
             conn.commit()
@@ -82,32 +84,36 @@ class SQLiteInstagramPublicationAttemptRepository(InstagramPublicationAttemptRep
             row = cursor.fetchone()
             if not row:
                 raise InstagramAttemptConflictError(f"Attempt not found for {generation_id}")
-            
+
             current_state = row[0]
             existing_media_id = row[1]
-            
+
             # Validation matrix
             if new_state == 'CAROUSEL_CREATED':
                 if current_state != 'CHILDREN_CREATED':
                     raise InvalidStateTransitionError(f"Cannot transition from {current_state} to {new_state}")
                 if 'carousel_creation_id' not in kwargs or not kwargs['carousel_creation_id']:
                     raise ValueError("carousel_creation_id required for CAROUSEL_CREATED")
-                
+
                 cursor.execute("""
-                    UPDATE instagram_publication_attempts 
-                    SET publish_state = ?, carousel_creation_id = ?, updated_at = ? 
+                    UPDATE instagram_publication_attempts
+                    SET publish_state = ?, carousel_creation_id = ?, updated_at = ?
                     WHERE generation_id = ?
                 """, (new_state, kwargs['carousel_creation_id'], self._now(), generation_id))
 
             elif new_state == 'PUBLISH_REQUESTED':
                 if current_state not in ('CAROUSEL_CREATED', 'PUBLISH_RETRY_AUTHORIZED'):
                     raise InvalidStateTransitionError(f"Cannot transition from {current_state} to {new_state}")
-                
+
                 cursor.execute("""
-                    UPDATE instagram_publication_attempts 
-                    SET publish_state = ?, updated_at = ? 
-                    WHERE generation_id = ?
+                    UPDATE instagram_publication_attempts
+                    SET publish_state = ?, updated_at = ?
+                    WHERE generation_id = ? AND publish_state IN ('CAROUSEL_CREATED', 'PUBLISH_RETRY_AUTHORIZED')
                 """, (new_state, self._now(), generation_id))
+                if cursor.rowcount == 0:
+                    raise InstagramAttemptConflictError(
+                        f"Concurrency claim lost: generation {generation_id} could not be claimed for PUBLISH_REQUESTED"
+                    )
 
             elif new_state == 'PUBLISHED_MEDIA_KNOWN':
                 if current_state != 'PUBLISH_REQUESTED':
@@ -115,54 +121,54 @@ class SQLiteInstagramPublicationAttemptRepository(InstagramPublicationAttemptRep
                 media_id = kwargs.get('media_id')
                 if not media_id or not str(media_id).strip():
                     raise ValueError("media_id must not be empty for PUBLISHED_MEDIA_KNOWN")
-                
+
                 cursor.execute("""
-                    UPDATE instagram_publication_attempts 
-                    SET publish_state = ?, media_id = ?, updated_at = ? 
+                    UPDATE instagram_publication_attempts
+                    SET publish_state = ?, media_id = ?, updated_at = ?
                     WHERE generation_id = ?
                 """, (new_state, media_id, self._now(), generation_id))
 
             elif new_state == 'PUBLISH_OUTCOME_UNKNOWN':
                 if current_state not in ('PUBLISH_REQUESTED', 'PUBLISHED_MEDIA_KNOWN'):
                     raise InvalidStateTransitionError(f"Cannot transition from {current_state} to {new_state}")
-                
+
                 cursor.execute("""
-                    UPDATE instagram_publication_attempts 
-                    SET publish_state = ?, updated_at = ? 
+                    UPDATE instagram_publication_attempts
+                    SET publish_state = ?, updated_at = ?
                     WHERE generation_id = ?
                 """, (new_state, self._now(), generation_id))
 
             elif new_state == 'PUBLISH_RETRY_AUTHORIZED':
                 if current_state != 'PUBLISH_OUTCOME_UNKNOWN':
                     raise InvalidStateTransitionError(f"Cannot transition from {current_state} to {new_state}")
-                
+
                 cursor.execute("""
-                    UPDATE instagram_publication_attempts 
-                    SET publish_state = ?, updated_at = ? 
+                    UPDATE instagram_publication_attempts
+                    SET publish_state = ?, updated_at = ?
                     WHERE generation_id = ?
                 """, (new_state, self._now(), generation_id))
 
             elif new_state == 'PUBLISHED_VERIFIED':
-                if current_state not in ('PUBLISHED_MEDIA_KNOWN', 'PUBLISH_OUTCOME_UNKNOWN'):
+                if current_state not in ('PUBLISHED_MEDIA_KNOWN', 'PUBLISH_OUTCOME_UNKNOWN', 'PUBLISHED_VERIFIED'):
                     raise InvalidStateTransitionError(f"Cannot transition from {current_state} to {new_state}")
-                
+
                 permalink = kwargs.get('permalink')
                 # Optional media_id update if needed, but it shouldn't overwrite an existing immutable one
                 # Usually VERIFIED_PUBLISHED just sets the final state and permalink
-                
+
                 if existing_media_id and 'media_id' in kwargs and kwargs['media_id'] and kwargs['media_id'] != existing_media_id:
                      raise InstagramAttemptConflictError("Cannot overwrite immutable media_id")
 
                 updates = ["publish_state = ?", "updated_at = ?"]
                 params = [new_state, self._now()]
-                
+
                 if permalink:
                     updates.append("permalink = ?")
                     params.append(permalink)
                 if not existing_media_id and kwargs.get('media_id'):
                     updates.append("media_id = ?")
                     params.append(kwargs['media_id'])
-                
+
                 params.append(generation_id)
                 query = f"UPDATE instagram_publication_attempts SET {', '.join(updates)} WHERE generation_id = ?"
                 cursor.execute(query, tuple(params))

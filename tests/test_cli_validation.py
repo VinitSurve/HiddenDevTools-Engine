@@ -6,7 +6,7 @@ from scheduler.startup_validator import StartupValidationError
 def test_validate_only_success(monkeypatch):
     """Test --validate-only succeeds when validation passes."""
     monkeypatch.setattr(sys, "argv", ["scheduler.py", "--validate-only"])
-    
+
     validation_called = []
     def mock_validate(*args, **kwargs):
         validation_called.append(True)
@@ -44,7 +44,7 @@ def test_validate_only_failure(monkeypatch):
 def test_validate_only_invokes_read_only_validation(monkeypatch):
     """Verify that --validate-only passes read_only=True to validate_startup."""
     monkeypatch.setattr(sys, "argv", ["scheduler.py", "--validate-only"])
-    
+
     calls = []
     def mock_validate(read_only=False):
         calls.append(read_only)
@@ -96,3 +96,12 @@ def test_publishing_migrations_runner_validate_read_only_behavior(tmp_path):
 
     with pytest.raises(ValueError, match="Table 'schema_migrations' not found"):
         runner.validate()
+
+
+def test_scheduler_sunday_skips_cleanly(monkeypatch):
+    """Verify scheduler --run-today --day sunday exits cleanly with return code 0 and SKIPPED status."""
+    monkeypatch.setattr(sys, "argv", ["scheduler.py", "--run-today", "--day", "sunday"])
+    monkeypatch.setattr("scheduler.scheduler.validate_startup", lambda *args, **kwargs: None)
+
+    rc = main()
+    assert rc == 0

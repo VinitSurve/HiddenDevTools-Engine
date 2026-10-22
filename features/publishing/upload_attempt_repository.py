@@ -23,7 +23,9 @@ class SQLiteUploadAttemptRepository(UploadAttemptRepository):
         self.db_path = db_path
 
     def _get_connection(self):
-        return sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA foreign_keys = ON;")
+        return conn
 
     def record_attempt(self, generation_id: str, slide_number: int, remote_path: str, sha256_hash: str, public_url: str, uploaded_at: str) -> None:
         if not generation_id:
@@ -41,18 +43,18 @@ class SQLiteUploadAttemptRepository(UploadAttemptRepository):
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            
+
             cursor.execute("""
-                SELECT remote_path, sha256_hash, public_url, uploaded_at 
-                FROM upload_attempts 
+                SELECT remote_path, sha256_hash, public_url, uploaded_at
+                FROM upload_attempts
                 WHERE generation_id = ? AND slide_number = ?
             """, (generation_id, slide_number))
             row = cursor.fetchone()
 
             if row:
                 existing_remote_path, existing_hash, existing_url, existing_time = row
-                if (existing_remote_path == remote_path and 
-                    existing_hash == sha256_hash and 
+                if (existing_remote_path == remote_path and
+                    existing_hash == sha256_hash and
                     existing_url == public_url):
                     # Idempotent success
                     logger.info(f"Idempotent upload attempt reuse for {generation_id} slide {slide_number}")
@@ -65,8 +67,8 @@ class SQLiteUploadAttemptRepository(UploadAttemptRepository):
                     )
 
             cursor.execute("""
-                INSERT INTO upload_attempts 
-                (generation_id, slide_number, remote_path, sha256_hash, public_url, uploaded_at) 
+                INSERT INTO upload_attempts
+                (generation_id, slide_number, remote_path, sha256_hash, public_url, uploaded_at)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (generation_id, slide_number, remote_path, sha256_hash, public_url, uploaded_at))
             conn.commit()
@@ -75,8 +77,8 @@ class SQLiteUploadAttemptRepository(UploadAttemptRepository):
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT remote_path, sha256_hash, public_url, uploaded_at 
-                FROM upload_attempts 
+                SELECT remote_path, sha256_hash, public_url, uploaded_at
+                FROM upload_attempts
                 WHERE generation_id = ? AND slide_number = ?
             """, (generation_id, slide_number))
             row = cursor.fetchone()
@@ -93,8 +95,8 @@ class SQLiteUploadAttemptRepository(UploadAttemptRepository):
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT slide_number, remote_path, sha256_hash, public_url, uploaded_at 
-                FROM upload_attempts 
+                SELECT slide_number, remote_path, sha256_hash, public_url, uploaded_at
+                FROM upload_attempts
                 WHERE generation_id = ?
                 ORDER BY slide_number ASC
             """, (generation_id,))

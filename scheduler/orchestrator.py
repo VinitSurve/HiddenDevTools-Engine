@@ -23,7 +23,7 @@ class SchedulerOrchestrator:
         self.templates_dir = templates_dir
         self.output_dir = output_dir
         self.publish_batch_service = PublishBatchService()
-        
+
         # Supabase and attempt repo might not be initialized with keys during tests
         try:
             self.storage = SupabaseStorage()
@@ -48,19 +48,23 @@ class SchedulerOrchestrator:
             now = get_ist_now()
             date_str = now.strftime("%Y-%m-%d")
             weekday = override_day if override_day is not None else now.weekday()
-        
+
         # 1. Determine niche
+        if weekday == 6:
+            logger.info("Selected Day 6 (Sunday): Sunday scheduled post is intentionally disabled for this launch. Exiting safely.")
+            return None
+
         config = Registry.get_config_for_day(weekday)
         if not config:
             logger.warning(f"Selected Day {weekday} has no configuration. Exiting.")
             return None
-            
+
         niche = config["niche"]
         sheet_name = config["sheet_name"]
-        
+
         logger.info(f"Selected Day {weekday}")
         logger.info(f"Selected Niche {niche}")
-        
+
         # 2. Get Publish Batch
         if pipeline_context:
             pipeline_context.start_stage("batch_selection")
@@ -70,70 +74,70 @@ class SchedulerOrchestrator:
             logger.error("Failed to acquire PublishBatch. Exiting.")
             if pipeline_context: pipeline_context.end_stage("failed", "Failed to acquire PublishBatch")
             return None
-            
+
         if pipeline_context:
             pipeline_context.set_correlation(batch.batch_id, batch.batch_id, niche)
             pipeline_context.end_stage("success")
-            
+
         logger.info(f"Acquired Batch {batch.batch_id} with {len(batch.rows)} rows")
-        
+
         # We need payload dictionaries for rendering
         payloads = [r.__dict__ if hasattr(r, '__dict__') else r for r in batch.rows]
-        
+
         # 3. Render PNGs
         if pipeline_context: pipeline_context.start_stage("rendering")
-        
+
         generation_dir = os.path.join(self.output_dir, batch.batch_id)
         os.makedirs(generation_dir, exist_ok=True)
-        
+
         try:
             renderer = RendererFactory.get_renderer(niche, self.templates_dir)
             # Ensure we send exactly 7 payloads
             if len(payloads) != 7:
                 payloads = [payloads[0]] * 7
-                
+
             # Archive Payload
             payload_path = os.path.join(generation_dir, "payload.json")
             import json
             with open(payload_path, "w", encoding="utf-8") as f:
                 json.dump(payloads, f, indent=2)
-                
+
             logger.info(f"payload.json written to disk (Slide 2): {payloads[0]}")
             logger.info(f"Renderer input dictionary (Slide 2): {payloads[0]}")
-                
+
             # Render files
             rendered_files = renderer.render(payloads, generation_dir, batch.batch_id)
-            
+
             # Compute Hashes
             payload_str = json.dumps(payloads, sort_keys=True)
             payload_hash = hashlib.sha256(payload_str.encode()).hexdigest()
-            
+
             layout_path = f"config/renderer_layouts/{niche}.py"
             layout_hash = "unknown"
             if os.path.exists(layout_path):
                 with open(layout_path, "rb") as f:
                     layout_hash = hashlib.sha256(f.read()).hexdigest()
-                    
+
             template_name = getattr(renderer, "content_template_name", "")
             template_path = os.path.join(self.templates_dir, template_name) if template_name else ""
             template_hash = "unknown"
             if os.path.exists(template_path):
                 with open(template_path, "rb") as f:
                     template_hash = hashlib.sha256(f.read()).hexdigest()
-                    
+
             font_hash = "unknown"
             font_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets", "fonts", "Inter_28pt-Regular.ttf"))
             if os.path.exists(font_path):
                 with open(font_path, "rb") as f:
                     font_hash = hashlib.sha256(f.read()).hexdigest()
-                    
+
             import inspect
             try:
                 renderer_source = inspect.getsource(renderer.__class__)
                 renderer_hash = hashlib.sha256(renderer_source.encode()).hexdigest()
             except:
                 renderer_hash = "unknown"
-            
+
             # Save Renderer Metadata
             metadata = {
                 "template": template_name,
@@ -146,7 +150,7 @@ class SchedulerOrchestrator:
             }
             with open(os.path.join(generation_dir, "render_metadata.json"), "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2)
-                
+
             # Expose hashes on the job object for manifest
             batch.hashes = {
                 "layout": layout_hash,
@@ -154,14 +158,14 @@ class SchedulerOrchestrator:
                 "fonts": font_hash,
                 "renderer": renderer_hash
             }
-                
+
             logger.info("Rendered Slides")
             if pipeline_context: pipeline_context.end_stage("success")
         except Exception as e:
             logger.error(f"Renderer exception: {e}")
             if pipeline_context: pipeline_context.end_stage("failed", str(e))
             raise
-            
+
         # 4. Generate caption
         if pipeline_context: pipeline_context.start_stage("caption")
         try:
@@ -172,11 +176,30 @@ class SchedulerOrchestrator:
             logger.error(f"Caption exception: {e}")
             if pipeline_context: pipeline_context.end_stage("failed", str(e))
             raise
-            
+
         # 5. Supabase Upload
         if pipeline_context: pipeline_context.start_stage("upload")
         artifacts = []
-        if self.storage and self.attempt_repo:
+        from config.app_config import config as app_cfg
+        if not app_cfg.features.enable_upload:
+            logger.info("Upload disabled by feature flag. Creating local mock artifacts.")
+            import glob
+            png_files = sorted(glob.glob(os.path.join(generation_dir, "*.png")))
+            for i, p in enumerate(png_files):
+                fname = os.path.basename(p)
+                with open(p, "rb") as f:
+                    sha = hashlib.sha256(f.read()).hexdigest()
+                artifacts.append(Artifact(
+                    slide_number=i+1,
+                    filename=fname,
+                    local_path=p,
+                    sha256=sha,
+                    mime_type="image/png",
+                    storage_path=f"{niche}/{batch.batch_id}/{fname}",
+                    public_url=f"https://mock.storage/{niche}/{batch.batch_id}/{fname}"
+                ))
+            if pipeline_context: pipeline_context.end_stage("success")
+        elif self.storage and self.attempt_repo:
             logger.info("Uploading to Supabase Storage")
             upload_result = self.storage.upload_folder(
                 generation_id=batch.batch_id,
@@ -188,7 +211,7 @@ class SchedulerOrchestrator:
                 logger.error(f"Upload failed: {upload_result.get('error')}")
                 if pipeline_context: pipeline_context.end_stage("failed", upload_result.get("error"))
                 raise RuntimeError(f"Storage upload failed: {upload_result.get('error')}")
-                
+
             # Build Artifacts
             for i, file_res in enumerate(upload_result.get("files", [])):
                 local_path = os.path.join(generation_dir, file_res["filename"])
@@ -199,7 +222,7 @@ class SchedulerOrchestrator:
                 with open(local_path, "rb") as f:
                     sha256 = hashlib.sha256(f.read()).hexdigest()
                 mime_type, _ = mimetypes.guess_type(local_path)
-                
+
                 artifacts.append(Artifact(
                     slide_number=i+1,
                     filename=file_res["filename"],
@@ -239,6 +262,6 @@ class SchedulerOrchestrator:
             status="READY"
         )
         job.hashes = getattr(batch, "hashes", {})
-        
+
         logger.info("PublishJob Ready")
         return job
