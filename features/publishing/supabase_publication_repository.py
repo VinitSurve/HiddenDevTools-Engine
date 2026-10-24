@@ -34,7 +34,7 @@ class SupabasePublicationRepository(PublicationRepository):
     def record_publication(self, generation_id: str, media_id: str, permalink: str, published_at: str) -> None:
         if not generation_id or not media_id or not permalink or not published_at:
             raise ValueError("All arguments must be non-empty strings")
-            
+
         data = {
             "generation_id": generation_id,
             "media_id": media_id,
@@ -43,7 +43,7 @@ class SupabasePublicationRepository(PublicationRepository):
             "sheet_sync_state": "PENDING",
             "sheet_sync_attempts": 0
         }
-        
+
         resp = requests.post(self.url, headers=self.headers, json=data)
         if resp.status_code == 409: # Conflict
             existing = self.get_by_generation_id(generation_id)
@@ -62,25 +62,30 @@ class SupabasePublicationRepository(PublicationRepository):
     def update_sheet_sync_state(self, generation_id: str, state: str, error: Optional[str] = None) -> None:
         if state not in ('PENDING', 'SUCCESS', 'FAILED'):
             raise ValueError("Invalid sync state")
-            
+
         existing = self.get_by_generation_id(generation_id)
         if not existing:
             return
-            
+
         attempts = existing.get('sheet_sync_attempts', 0) + 1
         now_ts = datetime.now(timezone.utc).isoformat()
-        
+
         update_data = {
             "sheet_sync_state": state,
             "sheet_sync_attempts": attempts,
             "last_sheet_sync_at": now_ts,
             "last_sheet_sync_error": error
         }
-        
+
         resp = requests.patch(f"{self.url}?generation_id=eq.{generation_id}", headers=self.headers, json=update_data)
         resp.raise_for_status()
 
     def get_pending_sheet_updates(self) -> List[Dict]:
         resp = requests.get(f"{self.url}?sheet_sync_state=in.(PENDING,FAILED)", headers=self.headers)
+        resp.raise_for_status()
+        return resp.json() if resp.json() else []
+
+    def get_recent_publications(self, limit: int = 10) -> List[Dict]:
+        resp = requests.get(f"{self.url}?order=published_at.desc&limit={limit}", headers=self.headers)
         resp.raise_for_status()
         return resp.json() if resp.json() else []

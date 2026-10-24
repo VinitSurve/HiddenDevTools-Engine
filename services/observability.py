@@ -23,23 +23,23 @@ class JSONFormatter(logging.Formatter):
             "name": record.name,
             "message": record.getMessage(),
         }
-        
+
         # Inject correlation context
         ctx = correlation_context.get()
         if ctx:
             log_obj.update(ctx)
-            
+
         if record.exc_info:
             log_obj["exc_info"] = self.formatException(record.exc_info)
-            
+
         # Add any extra fields passed explicitly via logger.info("...", extra={"foo": "bar"})
         for key, value in record.__dict__.items():
-            if key not in ["args", "asctime", "created", "exc_info", "exc_text", "filename", "funcName", 
-                           "id", "levelname", "levelno", "lineno", "module", "msecs", "message", "msg", 
+            if key not in ["args", "asctime", "created", "exc_info", "exc_text", "filename", "funcName",
+                           "id", "levelname", "levelno", "lineno", "module", "msecs", "message", "msg",
                            "name", "pathname", "process", "processName", "relativeCreated", "stack_info", "thread", "threadName"]:
                 if key not in log_obj:
                     log_obj[key] = value
-                    
+
         return json.dumps(log_obj)
 
 def setup_logging():
@@ -53,18 +53,18 @@ def setup_logging():
     # Clear existing handlers
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
-        
+
     root_logger.setLevel(logging.INFO)
-    
+
     log_output = os.environ.get("LOG_OUTPUT", "stdout").lower()
-    
+
     if log_output == "file":
         log_file = os.environ.get("LOG_FILE", "logs/pipeline.jsonl")
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         handler = logging.FileHandler(log_file, encoding="utf-8")
     else:
         handler = logging.StreamHandler(sys.stdout)
-        
+
     formatter = JSONFormatter()
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
@@ -81,12 +81,12 @@ class PipelineContext:
         self.generation_id: Optional[str] = None
         self.batch_id: Optional[str] = None
         self.niche: Optional[str] = None
-        
+
         self.start_time = time.time()
         self.stages: Dict[str, Dict[str, Any]] = {}
         self._current_stage: Optional[str] = None
         self._current_stage_start: float = 0.0
-        
+
         self._update_context()
 
     def set_correlation(self, generation_id: str, batch_id: str, niche: str):
@@ -110,7 +110,7 @@ class PipelineContext:
             ctx["batch_id"] = self.batch_id
         if self.niche:
             ctx["niche"] = self.niche
-            
+
         correlation_context.set(ctx)
 
     def start_stage(self, stage_name: str):
@@ -122,11 +122,11 @@ class PipelineContext:
     def end_stage(self, status: str, error: Optional[str] = None):
         if not self._current_stage:
             return
-            
+
         end_time = time.time()
         end_dt = datetime.datetime.now(datetime.timezone.utc).isoformat()
         duration_ms = int((end_time - self._current_stage_start) * 1000)
-        
+
         stage_data = {
             "status": status,
             "started_at": self._current_stage_start_dt,
@@ -135,20 +135,25 @@ class PipelineContext:
         }
         if error:
             stage_data["error"] = error
-            
+
         self.stages[self._current_stage] = stage_data
-        
+
         level = logging.ERROR if status == "failed" else logging.INFO
         logging.getLogger(__name__).log(
-            level, 
-            f"Ended stage: {self._current_stage}", 
+            level,
+            f"Ended stage: {self._current_stage}",
             extra={"stage": self._current_stage, "stage_status": status, "duration_ms": duration_ms}
         )
         self._current_stage = None
 
+    def set_schedule_context(self, **kwargs):
+        if not hasattr(self, "schedule_context"):
+            self.schedule_context = {}
+        self.schedule_context.update(kwargs)
+
     def get_summary(self, final_status: str) -> Dict[str, Any]:
         total_duration_ms = int((time.time() - self.start_time) * 1000)
-        
+
         summary = {
             "pipeline_version": "6.0.0",
             "engine_version": "HiddenDevTools Engine 1.0.0",
@@ -157,14 +162,17 @@ class PipelineContext:
             "total_duration_ms": total_duration_ms,
             "stages": self.stages
         }
-        
+
         if self.generation_id:
             summary["generation_id"] = self.generation_id
         if self.batch_id:
             summary["batch_id"] = self.batch_id
         if self.niche:
             summary["niche"] = self.niche
-            
+
+        if hasattr(self, "schedule_context") and self.schedule_context:
+            summary["schedule"] = self.schedule_context
+
         summary["persistence_backend"] = getattr(config.runtime, "persistence_backend", "sqlite")
-            
+
         return summary

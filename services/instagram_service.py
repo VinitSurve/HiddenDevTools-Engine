@@ -651,18 +651,44 @@ class InstagramService:
 
         if attempt:
             state = attempt['publish_state']
-            if state in ('PUBLISH_OUTCOME_UNKNOWN', 'PUBLISHED_MEDIA_KNOWN', 'PUBLISHED_VERIFIED'):
-                logger.error(f"Cannot publish {generation_id}: Attempt state is {state}. Manual reconciliation required.")
+            if state in ('PUBLISHED_MEDIA_KNOWN', 'PUBLISHED_VERIFIED'):
+                logger.info(f"Idempotency hit: Attempt {generation_id} already published with media_id {attempt.get('media_id')}")
+                return {
+                    "success": True,
+                    "media_id": attempt.get("media_id"),
+                    "permalink": attempt.get("permalink", ""),
+                    "timestamp": attempt.get("updated_at", ""),
+                    "verified": (state == 'PUBLISHED_VERIFIED')
+                }
+            elif state == 'PUBLISH_OUTCOME_UNKNOWN':
+                logger.error(f"Cannot publish {generation_id}: Attempt state is PUBLISH_OUTCOME_UNKNOWN. Manual reconciliation required.")
                 return {"success": False, "error": f"Attempt state is {state}. Manual reconciliation required."}
             elif state == 'PUBLISH_REQUESTED':
                 logger.error(f"Cannot publish {generation_id}: Attempt state is PUBLISH_REQUESTED (ambiguous crash state). Transitioning to PUBLISH_OUTCOME_UNKNOWN.")
                 attempt_repo.transition_state(generation_id, 'PUBLISH_OUTCOME_UNKNOWN')
                 return {"success": False, "error": "PUBLISH_REQUESTED found on retry. Transitioned to PUBLISH_OUTCOME_UNKNOWN."}
-            elif state == 'PUBLISH_RETRY_AUTHORIZED':
+            elif state in ('PUBLISH_RETRY_AUTHORIZED', 'CAROUSEL_CREATED'):
                 creation_id = attempt.get('carousel_creation_id')
                 if not creation_id:
-                    return {"success": False, "error": "PUBLISH_RETRY_AUTHORIZED missing carousel_creation_id"}
-                logger.info(f"Resuming authorized retry using existing carousel {creation_id}")
+                    return {"success": False, "error": f"{state} missing carousel_creation_id"}
+                logger.info(f"Resuming {state} retry using existing carousel container {creation_id} (zero new containers created)")
+
+            elif state == 'CHILDREN_CREATED':
+                container_ids = attempt.get('child_creation_ids') or []
+                if not container_ids:
+                    return {"success": False, "error": "CHILDREN_CREATED missing child_creation_ids"}
+                logger.info(f"Resuming CHILDREN_CREATED retry with {len(container_ids)} existing child containers (zero new child containers created)")
+                for idx, cid in enumerate(container_ids, start=1):
+                    if not self.wait_for_container(cid):
+                        return {"success": False, "error": f"Slide {idx} container {cid} failed or timed out."}
+                # Create carousel container
+                carousel_result = self.create_carousel(container_ids, caption=caption)
+                if not carousel_result["success"]:
+                    return {"success": False, "error": f"Carousel container creation failed: {carousel_result.get('error')}"}
+                creation_id = carousel_result["creation_id"]
+                attempt_repo.transition_state(generation_id, 'CAROUSEL_CREATED', carousel_creation_id=creation_id)
+                if not self.wait_for_container(creation_id):
+                    return {"success": False, "error": f"Carousel container {creation_id} failed or timed out."}
             else:
                 return {"success": False, "error": f"Unhandled attempt state: {state}"}
         else:
@@ -695,6 +721,7 @@ class InstagramService:
 
             if not self.wait_for_container(creation_id):
                 return {"success": False, "error": f"Carousel container {creation_id} failed or timed out."}
+
 
         # Before media_publish: Claim transition atomically
         try:

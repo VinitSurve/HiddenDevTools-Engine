@@ -19,7 +19,7 @@ class PublishBatch:
 
 class PublishBatchService:
     @staticmethod
-    def get_next_batch(niche: str, sheet_name: str, date: str) -> Optional[PublishBatch]:
+    def get_next_batch(niche: str, sheet_name: str, date: str, generation_id: Optional[str] = None) -> Optional[PublishBatch]:
         """
         Retrieves the next publishable batch for the given niche.
         Uses BatchClaimService to securely claim 7 Draft rows.
@@ -35,10 +35,11 @@ class PublishBatchService:
                     candidate_rows.append(payload)
                 
                 return PublishBatch(
-                    batch_id=f"GEN_{uuid.uuid4().hex[:8].upper()}",
+                    batch_id=generation_id or f"GEN_{uuid.uuid4().hex[:8].upper()}",
                     rows=candidate_rows,
                     sheet_name=sheet_name
                 )
+
                 
             ws = None
             if open_sheet is not None:
@@ -78,7 +79,10 @@ class PublishBatchService:
                 logger.error(f"Failed to fetch real draft rows from sheet: {e}", exc_info=True)
                 return None
                 
-            generation_id = f"GEN_{uuid.uuid4().hex[:8].upper()}"
+            if not generation_id:
+                from services.idempotency_service import derive_canonical_generation_id
+                generation_id = derive_canonical_generation_id(date, niche)
+
             
             gen_id = BatchClaimService.claim_resources(
                 sheet_name=sheet_name,

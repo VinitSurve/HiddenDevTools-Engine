@@ -32,22 +32,45 @@ class SchedulerOrchestrator:
             self.storage = None
             self.attempt_repo = None
 
-    def run_today(self, override_day: int = None, override_date: str = None, mock_batch: PublishBatch = None, pipeline_context=None) -> Optional[PublishJob]:
+    def run_today(
+        self,
+        override_day: int = None,
+        override_date: str = None,
+        mock_batch: PublishBatch = None,
+        pipeline_context=None,
+        schedule_aware: bool = False,
+        scheduled_at: Optional[Any] = None
+    ) -> Optional[PublishJob]:
         """
         Runs the daily orchestration pipeline Phase 5B.2.
         Fails fast if any step encounters an error.
         """
         logger.info("Scheduler Started")
+        target_info = None
 
         if override_date:
             now = datetime.datetime.strptime(override_date, "%Y-%m-%d")
             date_str = override_date
             weekday = override_day if override_day is not None else now.weekday()
+        elif override_day is not None:
+            from utils.timezone import get_ist_now
+            now = get_ist_now()
+            date_str = now.strftime("%Y-%m-%d")
+            weekday = override_day
+        elif schedule_aware:
+            from utils.timezone import get_scheduled_publishing_target
+            target_info = get_scheduled_publishing_target(scheduled_at=scheduled_at)
+            date_str = target_info["target_date_str"]
+            weekday = target_info["target_weekday"]
+            logger.info(
+                f"Schedule-Aware Target: date={date_str}, day={target_info['target_day_name']}, "
+                f"delay={target_info['delay_human']} (delayed={target_info['is_delayed']}, rollover={target_info['is_next_day_rollover']}, expired={target_info.get('is_expired')})"
+            )
         else:
             from utils.timezone import get_ist_now
             now = get_ist_now()
             date_str = now.strftime("%Y-%m-%d")
-            weekday = override_day if override_day is not None else now.weekday()
+            weekday = now.weekday()
 
         # 1. Determine niche
         if weekday == 6:
@@ -65,11 +88,88 @@ class SchedulerOrchestrator:
         logger.info(f"Selected Day {weekday}")
         logger.info(f"Selected Niche {niche}")
 
+        from services.idempotency_service import check_already_published, derive_canonical_generation_id
+        canonical_gen_id = derive_canonical_generation_id(date_str, niche)
+
+        # Check for slot expiration (e.g. execution delayed beyond 24h slot deadline)
+        if target_info and target_info.get("is_expired"):
+            logger.warning(
+                f"SLOT_EXPIRED: Intended publishing slot {date_str} ({niche}) has expired "
+                f"(delay {target_info['delay_human']} exceeds slot deadline). Dropping execution."
+            )
+            return PublishJob(
+                generation_id=canonical_gen_id,
+                batch_id=canonical_gen_id,
+                date=date_str,
+                weekday=weekday,
+                niche=niche,
+                sheet_name=sheet_name,
+                caption="",
+                hashtags=[],
+                status="EXPIRED",
+                already_published_info={"is_expired": True, "delay_human": target_info["delay_human"]}
+            )
+
+        # 1.5 Pre-Publish Idempotency Check
+        from config.app_config import config as app_cfg
+        is_dry_run = getattr(app_cfg.features, "dry_run", False) if hasattr(app_cfg, "features") else False
+
+        if not mock_batch and not is_dry_run:
+            pub_repo = None
+            try:
+                pub_repo = RepositoryProvider.get_publication_repository()
+            except Exception:
+                pass
+            already_pub = check_already_published(
+                target_date_str=date_str,
+                niche=niche,
+                sheet_name=sheet_name,
+                pub_repo=pub_repo,
+                attempt_repo=self.attempt_repo
+            )
+            # Fail closed if repository error occurred and publication state cannot be verified
+            if already_pub.get("has_error"):
+                logger.error(f"FAIL CLOSED: Pre-publish idempotency check encountered error: {already_pub.get('error')}")
+                raise RuntimeError(
+                    f"Pre-publish idempotency check failed: {already_pub.get('error')}. "
+                    "Failing closed to prevent duplicate publishing."
+                )
+
+            if already_pub["is_published"]:
+                logger.info(
+                    f"IDEMPOTENCY: Content for {date_str} ({niche}) was ALREADY PUBLISHED. "
+                    f"Media ID: {already_pub['media_id']}, Permalink: {already_pub['permalink']}"
+                )
+                if already_pub.get("needs_sheet_sync") and pub_repo:
+                    try:
+                        from workers.reconciliation_worker import SheetSyncRecovery
+                        logger.info(f"Reconciling pending Google Sheets sync for {already_pub['generation_id']}...")
+                        SheetSyncRecovery(pub_repo).recover()
+                    except Exception as e:
+                        logger.warning(f"Failed to reconcile Google Sheets in idempotency check: {e}")
+
+                if pipeline_context:
+                    pipeline_context.set_correlation(already_pub["generation_id"], already_pub["generation_id"], niche)
+
+                return PublishJob(
+                    generation_id=already_pub["generation_id"],
+                    batch_id=already_pub["generation_id"],
+                    date=date_str,
+                    weekday=weekday,
+                    niche=niche,
+                    sheet_name=sheet_name,
+                    caption="",
+                    hashtags=[],
+                    status="ALREADY_PUBLISHED",
+                    already_published_info=already_pub
+                )
+
+
         # 2. Get Publish Batch
         if pipeline_context:
             pipeline_context.start_stage("batch_selection")
         logger.info("Requesting PublishBatch")
-        batch = mock_batch or self.publish_batch_service.get_next_batch(niche, sheet_name, date_str)
+        batch = mock_batch or self.publish_batch_service.get_next_batch(niche, sheet_name, date_str, generation_id=canonical_gen_id)
         if not batch:
             logger.error("Failed to acquire PublishBatch. Exiting.")
             if pipeline_context: pipeline_context.end_stage("failed", "Failed to acquire PublishBatch")
@@ -78,6 +178,7 @@ class SchedulerOrchestrator:
         if pipeline_context:
             pipeline_context.set_correlation(batch.batch_id, batch.batch_id, niche)
             pipeline_context.end_stage("success")
+
 
         logger.info(f"Acquired Batch {batch.batch_id} with {len(batch.rows)} rows")
 

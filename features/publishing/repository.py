@@ -132,6 +132,36 @@ class SQLitePublicationRepository(PublicationRepository):
         finally:
             conn.close()
 
+    def get_recent_publications(self, limit: int = 10):
+        """Get recent publications ordered by published_at DESC."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT generation_id, media_id, permalink, published_at,
+                       sheet_sync_state, sheet_sync_attempts, last_sheet_sync_at, last_sheet_sync_error
+                FROM published_generations
+                ORDER BY published_at DESC
+                LIMIT ?
+            """, (limit,))
+            rows = cursor.fetchall()
+            return [
+                {
+                    "generation_id": row[0],
+                    "media_id": row[1],
+                    "permalink": row[2],
+                    "published_at": row[3],
+                    "sheet_sync_state": row[4],
+                    "sheet_sync_attempts": row[5],
+                    "last_sheet_sync_at": row[6],
+                    "last_sheet_sync_error": row[7]
+                }
+                for row in rows
+            ]
+        finally:
+            conn.close()
+
+
 __all__ = [
     "SQLitePublicationRepository",
     "SQLiteUploadedArtifactRepository",

@@ -2,9 +2,14 @@ name: Scheduled Instagram Publishing
 
 on:
   schedule:
-    # 7:00 PM IST (Asia/Kolkata, UTC+05:30) = 13:30 UTC
+    # Primary scheduled publishing: 7:00 PM IST (Asia/Kolkata, UTC+05:30) = 13:30 UTC
     # Runs Monday through Saturday (1-6). Sunday is intentionally excluded.
     - cron: '30 13 * * 1-6'
+    # Secondary recovery & reconciliation: 8:30 PM IST (15:00 UTC) Monday-Saturday
+    # Safely recovers delayed/missed runs; idempotent no-op if already published
+    - cron: '0 15 * * 1-6'
+    # Late recovery: 11:00 PM IST (17:30 UTC) Monday-Saturday
+    - cron: '30 17 * * 1-6'
   workflow_dispatch:
     inputs:
       day:
@@ -101,17 +106,25 @@ jobs:
 
       - name: Execute Daily Carousel Publishing Engine
         run: |
-          CLI_ARGS="--run-today"
+          CLI_ARGS="--run-today --schedule-aware"
+
+          SCHEDULED_AT=""
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            SCHEDULED_AT=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" --jq '.created_at' 2>/dev/null || echo "")
+          fi
+          if [ -n "$SCHEDULED_AT" ]; then
+            CLI_ARGS="$CLI_ARGS --scheduled-at $SCHEDULED_AT"
+          fi
 
           # Handle manual workflow dispatch overrides safely
           INPUT_DAY="${{ inputs.day }}"
           if [ -n "$INPUT_DAY" ] && [ "$INPUT_DAY" != "today" ]; then
-            CLI_ARGS="$CLI_ARGS --day $INPUT_DAY"
+            CLI_ARGS="--run-today --day $INPUT_DAY"
           fi
 
           INPUT_DATE="${{ inputs.date }}"
           if [ -n "$INPUT_DATE" ]; then
-            CLI_ARGS="$CLI_ARGS --date $INPUT_DATE"
+            CLI_ARGS="--run-today --date $INPUT_DATE"
           fi
 
           echo "Executing scheduler: python scheduler/scheduler.py $CLI_ARGS"
@@ -132,6 +145,74 @@ jobs:
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           META_VERIFY_TOKEN: ${{ secrets.META_VERIFY_TOKEN || secrets.META_WEBHOOK_VERIFY_TOKEN }}
           META_GRAPH_API_VERSION: ${{ secrets.META_GRAPH_API_VERSION || 'v23.0' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publishing Summary & Alerting
+        if: always()
+        run: |
+          python -c "
+          import json, os, sys
+
+          audit_file = 'scheduler_audit.json'
+          summary_file = os.environ.get('GITHUB_STEP_SUMMARY')
+
+          if not os.path.isfile(audit_file):
+              if summary_file:
+                  with open(summary_file, 'a') as f:
+                      f.write('## ⚠️ Publishing Run Incomplete\nNo audit log was produced.\n')
+              sys.exit(0)
+
+          with open(audit_file) as f:
+              lines = [l.strip() for l in f if l.strip()]
+
+          if not lines:
+              sys.exit(0)
+
+          last_audit = json.loads(lines[-1])
+          status = last_audit.get('status', 'UNKNOWN')
+          skip_reason = last_audit.get('skip_reason')
+          intended_date = last_audit.get('intended_date', last_audit.get('timestamp', ''))
+          niche = last_audit.get('niche', 'N/A')
+          media_id = last_audit.get('media_id', 'N/A')
+          permalink = last_audit.get('permalink', '')
+          delay_human = last_audit.get('delay_human', '0s')
+
+          md = []
+          if status == 'SUCCESS':
+              if skip_reason == 'ALREADY_PUBLISHED':
+                  md.append('## ✅ Scheduled Post Already Published (Idempotent Skip)')
+                  md.append(f'- **Target Date**: \`{intended_date}\` ({niche})')
+                  md.append(f'- **Instagram Media ID**: \`{media_id}\`')
+                  if permalink:
+                      md.append(f'- **Instagram Post**: [{permalink}]({permalink})')
+                  md.append(f'- **Execution Delay**: {delay_human}')
+              else:
+                  md.append('## 🚀 Instagram Carousel Published Successfully')
+                  md.append(f'- **Target Date**: \`{intended_date}\` ({niche})')
+                  md.append(f'- **Instagram Media ID**: \`{media_id}\`')
+                  if permalink:
+                      md.append(f'- **Instagram Post**: [{permalink}]({permalink})')
+                  md.append(f'- **Batch ID**: \`{last_audit.get(\"batch_id\", \"\")}\`')
+                  md.append(f'- **Execution Delay**: {delay_human}')
+          elif status == 'SKIPPED':
+              md.append('## ℹ️ Publishing Intentionally Skipped')
+              md.append('- **Reason**: Sunday scheduled publishing is disabled')
+          elif status == 'EXPIRED':
+              md.append('## ⚠️ Scheduled Publishing Slot Expired')
+              md.append(f'- **Target Date**: \`{intended_date}\` ({niche})')
+              md.append(f'- **Execution Delay**: {delay_human}')
+              md.append('- **Reason**: Run was dropped because execution started after the 24-hour publishing window closed, preventing stale publishing or colliding with the next scheduled day.')
+          else:
+              md.append('## ❌ Publishing Failed or Incomplete')
+              md.append(f'- **Target Date**: \`{intended_date}\` ({niche})')
+              md.append(f'- **Status**: \`{status}\`')
+              print('::error::Instagram publishing pipeline failed or did not complete successfully!')
+
+
+          if summary_file:
+              with open(summary_file, 'a') as f:
+                  f.write('\n'.join(md) + '\n')
+          "
 
       - name: Upload Audit Logs & Manifests
         if: always()

@@ -1,7 +1,7 @@
 import logging
 from features.publishing.provider import RepositoryProvider
 import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from services.observability import PipelineContext
 from features.publishing.repository import PublicationRepository
 from services.batch_claim_service import BatchClaimService

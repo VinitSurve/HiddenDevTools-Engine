@@ -34,20 +34,36 @@ class InstagramGraphPublisher(Publisher):
         # Idempotency Protection before hitting Graph API
         existing_pub = self.pub_repo.get_by_generation_id(job.generation_id)
         if existing_pub:
-            logger.info(f"Idempotency hit: Generation ID {job.generation_id} already published.")
+            logger.info(f"Idempotency hit: Generation ID {job.generation_id} already published in publication repository.")
             return PublishResult(
                 success=True,
                 provider="Instagram",
                 provider_post_id=existing_pub.get("media_id"),
                 permalink=existing_pub.get("permalink"),
                 published_at=existing_pub.get("published_at"),
-                provider_response={"message": "Idempotent success (previously published)"},
+                provider_response={"message": "Idempotent success (previously published in pub_repo)"},
                 attempt_count=0
             )
 
+        existing_attempt = self.attempt_repo.get_attempt(job.generation_id)
+        if existing_attempt and existing_attempt.get("publish_state") in ("PUBLISHED_VERIFIED", "PUBLISHED_MEDIA_KNOWN"):
+            media_id = existing_attempt.get("media_id")
+            if media_id and media_id not in ("UNKNOWN", "SIMULATED_MEDIA_ID"):
+                logger.info(f"Idempotency hit: Generation ID {job.generation_id} already published in attempt repository.")
+                return PublishResult(
+                    success=True,
+                    provider="Instagram",
+                    provider_post_id=media_id,
+                    permalink=existing_attempt.get("permalink", ""),
+                    published_at=existing_attempt.get("updated_at", ""),
+                    provider_response={"message": "Idempotent success (previously published in attempt_repo)"},
+                    attempt_count=0
+                )
+
+
         # Prepare payload
         image_urls = [a.public_url for a in job.artifacts if a.public_url]
-        
+
         try:
             # Delegate to existing InstagramService
             res = self.service.publish_carousel(
@@ -56,7 +72,7 @@ class InstagramGraphPublisher(Publisher):
                 attempt_repo=self.attempt_repo,
                 caption=job.caption
             )
-            
+
             if res.get("success"):
                 return PublishResult(
                     success=True,

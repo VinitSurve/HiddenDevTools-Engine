@@ -85,3 +85,19 @@ def test_upload_recovery_with_artifacts(tmp_path, monkeypatch):
     assert result.metrics["checked"] == 9
     assert result.metrics["recovered"] == 9
     assert mock_storage.upload_file.call_count == 9
+
+def test_reconciliation_worker_type_annotations_and_imports():
+    """Regression test ensuring all type hints evaluate cleanly without NameError (e.g. Optional)."""
+    import typing
+    import workers.reconciliation_worker as rw
+
+    for cls_name in ["ReconciliationWorker", "SheetSyncRecovery", "UploadRecovery", "PublicationRecovery", "RecoveryResult"]:
+        cls = getattr(rw, cls_name)
+        for attr_name in dir(cls):
+            attr = getattr(cls, attr_name)
+            if callable(attr):
+                try:
+                    hints = typing.get_type_hints(attr)
+                    assert isinstance(hints, dict)
+                except Exception as e:
+                    pytest.fail(f"Failed to evaluate type hints on {cls_name}.{attr_name}: {e}")

@@ -18,6 +18,10 @@ class PublicationRepository(ABC):
     def get_pending_sheet_updates(self) -> List[Dict]:
         pass
 
+    @abstractmethod
+    def get_recent_publications(self, limit: int = 10) -> List[Dict]:
+        pass
+
 
 class UploadedArtifactRepository(ABC):
     @abstractmethod
