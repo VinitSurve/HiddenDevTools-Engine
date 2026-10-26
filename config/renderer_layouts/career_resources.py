@@ -6,7 +6,7 @@ FONT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", 
 REGIONS = {
     "resource_name": LayoutRegion("resource_name", 45, 207, 1080, 60, 50, 16, FONT_PATH, "left", 6),
     "website": LayoutRegion("website", 89, 290, 450, 40, 38, 19, FONT_PATH, "left", 8),
-    "category": LayoutRegion("category", 714, 971, 120, 30, 19, 16, FONT_PATH, "left", 6),
+    "category": LayoutRegion("category", 688, 971, 150, 30, 19, 11, FONT_PATH, "center", 1),
     "free_paid": LayoutRegion("free_paid", 950, 971, 120, 30, 19, 16, FONT_PATH, "left", 6),
     "Slide Number": LayoutRegion("Slide Number", 138, 37, 20, 40, 36, 16, FONT_PATH, "left", 6),
     "best_for_1": LayoutRegion("best_for_1", 820, 682, 250, 30, 25, 16, FONT_PATH, "left", 6),

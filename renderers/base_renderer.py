@@ -136,6 +136,10 @@ class BaseRenderer:
         if not text:
             return
 
+        text = " ".join(str(text).split())
+        if not text:
+            return
+
         current_size = region.preferred_font_size
         lines = []
         font = None
