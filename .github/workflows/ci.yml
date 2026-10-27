@@ -18,7 +18,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install dependencies
@@ -61,6 +61,7 @@ jobs:
         run: python scheduler/scheduler.py --run-today
         env:
           DRY_RUN: "True"
+          ENABLE_UPLOAD: "False"
           INSTAGRAM_ACCESS_TOKEN: "mock_token"
           INSTAGRAM_BUSINESS_ACCOUNT_ID: "mock_id"
           SUPABASE_URL: "https://mock.supabase.co"

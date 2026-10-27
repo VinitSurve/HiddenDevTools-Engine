@@ -54,7 +54,9 @@ def check_already_published(
     sheet_name: Optional[str] = None,
     pub_repo=None,
     attempt_repo=None,
-    worksheet=None
+    worksheet=None,
+    instagram_attempt_repo=None,
+    upload_attempt_repo=None
 ) -> Dict[str, Any]:
     """
     Durable pre-publish idempotency check.
@@ -130,10 +132,18 @@ def check_already_published(
             logger.error(f"Error querying publication repository for idempotency check: {e}")
             check_errors.append(f"pub_repo: {e}")
 
-    # 2. Check Attempt Repository
-    if attempt_repo:
+    # 2. Check Attempt Repositories (Instagram Publication and Upload Attempts)
+    # Check Instagram publication attempt repo first (if provided or passed as attempt_repo)
+    ig_repo = instagram_attempt_repo
+    if ig_repo is None and attempt_repo is not None:
+        if hasattr(attempt_repo, "transition_state"):
+            ig_repo = attempt_repo
+        elif not hasattr(attempt_repo, "record_attempt") and not hasattr(attempt_repo, "get_all_attempts"):
+            ig_repo = attempt_repo
+
+    if ig_repo:
         try:
-            attempt = attempt_repo.get_attempt(canonical_gen_id)
+            attempt = ig_repo.get_attempt(canonical_gen_id)
             if attempt and attempt.get("publish_state") in ("PUBLISHED_VERIFIED", "PUBLISHED_MEDIA_KNOWN"):
                 media_id = attempt.get("media_id")
                 if media_id and media_id not in ("UNKNOWN", "SIMULATED_MEDIA_ID"):
@@ -145,13 +155,28 @@ def check_already_published(
                         "permalink": attempt.get("permalink", ""),
                         "published_at": attempt.get("updated_at", ""),
                         "sheet_sync_state": "PENDING",
-                        "source": "attempt_repo",
+                        "source": "instagram_attempt_repo",
                         "needs_sheet_sync": True,
                         "has_error": False
                     }
         except Exception as e:
-            logger.error(f"Error querying attempt repository for idempotency check: {e}")
-            check_errors.append(f"attempt_repo: {e}")
+            logger.error(f"Error querying Instagram attempt repository for idempotency check: {e}")
+            check_errors.append(f"instagram_attempt_repo: {e}")
+
+    # Check Upload Attempt Repository safely for generation attempts
+    up_repo = upload_attempt_repo
+    if up_repo is None and attempt_repo is not None and attempt_repo is not ig_repo:
+        up_repo = attempt_repo
+    elif up_repo is None and attempt_repo is not None and (hasattr(attempt_repo, "record_attempt") or hasattr(attempt_repo, "get_all_attempts")):
+        up_repo = attempt_repo
+
+    if up_repo:
+        try:
+            # Query attempts for the generation safely with optional slide_number
+            _ = up_repo.get_attempt(canonical_gen_id)
+        except Exception as e:
+            logger.error(f"Error querying upload attempt repository for idempotency check: {e}")
+            check_errors.append(f"upload_attempt_repo: {e}")
 
     # 3. Check Google Sheets row state
     if sheet_name:

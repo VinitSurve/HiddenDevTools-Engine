@@ -58,8 +58,11 @@ class SupabaseUploadAttemptRepository(UploadAttemptRepository):
                     )
         resp.raise_for_status()
 
-    def get_attempt(self, generation_id: str, slide_number: int) -> Optional[Dict]:
-        resp = requests.get(f"{self.url}?generation_id=eq.{generation_id}&slide_number=eq.{slide_number}", headers=self.headers)
+    def get_attempt(self, generation_id: str, slide_number: Optional[int] = None) -> Optional[Dict]:
+        if slide_number is None:
+            resp = requests.get(f"{self.url}?generation_id=eq.{generation_id}&limit=1", headers=self.headers)
+        else:
+            resp = requests.get(f"{self.url}?generation_id=eq.{generation_id}&slide_number=eq.{slide_number}", headers=self.headers)
         resp.raise_for_status()
         data = resp.json()
         if data:

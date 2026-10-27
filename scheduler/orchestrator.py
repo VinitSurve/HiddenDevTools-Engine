@@ -24,13 +24,15 @@ class SchedulerOrchestrator:
         self.output_dir = output_dir
         self.publish_batch_service = PublishBatchService()
 
-        # Supabase and attempt repo might not be initialized with keys during tests
+        # Supabase and attempt repos might not be initialized with keys during tests
         try:
             self.storage = SupabaseStorage()
             self.attempt_repo = RepositoryProvider.get_upload_attempt_repository()
-        except ValueError:
+            self.ig_attempt_repo = RepositoryProvider.get_instagram_attempt_repository()
+        except Exception:
             self.storage = None
             self.attempt_repo = None
+            self.ig_attempt_repo = None
 
     def run_today(
         self,
@@ -120,12 +122,20 @@ class SchedulerOrchestrator:
                 pub_repo = RepositoryProvider.get_publication_repository()
             except Exception:
                 pass
+            ig_attempt_repo = getattr(self, "ig_attempt_repo", None)
+            if not ig_attempt_repo:
+                try:
+                    ig_attempt_repo = RepositoryProvider.get_instagram_attempt_repository()
+                except Exception:
+                    pass
             already_pub = check_already_published(
                 target_date_str=date_str,
                 niche=niche,
                 sheet_name=sheet_name,
                 pub_repo=pub_repo,
-                attempt_repo=self.attempt_repo
+                attempt_repo=ig_attempt_repo or self.attempt_repo,
+                instagram_attempt_repo=ig_attempt_repo,
+                upload_attempt_repo=self.attempt_repo
             )
             # Fail closed if repository error occurred and publication state cannot be verified
             if already_pub.get("has_error"):
@@ -282,8 +292,8 @@ class SchedulerOrchestrator:
         if pipeline_context: pipeline_context.start_stage("upload")
         artifacts = []
         from config.app_config import config as app_cfg
-        if not app_cfg.features.enable_upload:
-            logger.info("Upload disabled by feature flag. Creating local mock artifacts.")
+        if not app_cfg.features.enable_upload or is_dry_run:
+            logger.info("Upload disabled by feature flag or dry run. Creating local mock artifacts.")
             import glob
             png_files = sorted(glob.glob(os.path.join(generation_dir, "*.png")))
             for i, p in enumerate(png_files):

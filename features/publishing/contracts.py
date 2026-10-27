@@ -39,7 +39,7 @@ class UploadAttemptRepository(ABC):
         pass
 
     @abstractmethod
-    def get_attempt(self, generation_id: str, slide_number: int) -> Optional[Dict]:
+    def get_attempt(self, generation_id: str, slide_number: Optional[int] = None) -> Optional[Dict]:
         pass
 
     @abstractmethod

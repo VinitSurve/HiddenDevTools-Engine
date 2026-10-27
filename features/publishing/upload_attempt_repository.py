@@ -73,14 +73,22 @@ class SQLiteUploadAttemptRepository(UploadAttemptRepository):
             """, (generation_id, slide_number, remote_path, sha256_hash, public_url, uploaded_at))
             conn.commit()
 
-    def get_attempt(self, generation_id: str, slide_number: int) -> Optional[Dict]:
+    def get_attempt(self, generation_id: str, slide_number: Optional[int] = None) -> Optional[Dict]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT remote_path, sha256_hash, public_url, uploaded_at
-                FROM upload_attempts
-                WHERE generation_id = ? AND slide_number = ?
-            """, (generation_id, slide_number))
+            if slide_number is None:
+                cursor.execute("""
+                    SELECT remote_path, sha256_hash, public_url, uploaded_at
+                    FROM upload_attempts
+                    WHERE generation_id = ?
+                    LIMIT 1
+                """, (generation_id,))
+            else:
+                cursor.execute("""
+                    SELECT remote_path, sha256_hash, public_url, uploaded_at
+                    FROM upload_attempts
+                    WHERE generation_id = ? AND slide_number = ?
+                """, (generation_id, slide_number))
             row = cursor.fetchone()
             if row:
                 return {
