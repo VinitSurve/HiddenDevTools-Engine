@@ -39,3 +39,18 @@ def isolate_publishing_db(monkeypatch, tmp_path_factory):
     # Run migrations on the isolated DB so schema is ready
     from features.publishing.migrations_runner import run_publishing_migrations
     run_publishing_migrations(db_file)
+
+@pytest.fixture(autouse=True)
+def mock_environment_variables(monkeypatch, tmp_path_factory):
+    # Provide baseline configuration in environment so tests run hermetically in CI without .env
+    monkeypatch.setenv("INSTAGRAM_ACCESS_TOKEN", "mock_token")
+    monkeypatch.setenv("INSTAGRAM_BUSINESS_ACCOUNT_ID", "mock_id")
+    monkeypatch.setenv("SUPABASE_URL", "https://mock.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "mock_key")
+    sa_dir = tmp_path_factory.mktemp("sa")
+    sa_file = str(sa_dir / "service_account.json")
+    with open(sa_file, "w") as f:
+        f.write('{"type": "service_account", "project_id": "mock", "private_key": "mock", "client_email": "mock@example.com"}')
+    monkeypatch.setenv("SERVICE_ACCOUNT_FILE", sa_file)
+    monkeypatch.setenv("GOOGLE_SERVICE_ACCOUNT_JSON", '{"type": "service_account", "project_id": "mock", "private_key": "mock", "client_email": "mock@example.com"}')
+

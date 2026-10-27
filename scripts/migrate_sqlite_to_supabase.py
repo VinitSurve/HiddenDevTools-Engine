@@ -11,7 +11,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 def get_sqlite_conn():
-    return sqlite3.connect(PUBLISHING_DB_PATH)
+    import os
+    db_path = os.getenv("PUBLISHING_DB_PATH", PUBLISHING_DB_PATH)
+    return sqlite3.connect(db_path)
 
 def get_supabase_headers():
     return {

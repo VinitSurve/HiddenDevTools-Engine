@@ -15,10 +15,8 @@ def validate_startup(read_only: bool = False):
     
     # 1. Check directories
     if not os.path.exists(OUTPUT_DIR):
-        if read_only:
-            raise StartupValidationError(f"Output directory {OUTPUT_DIR} does not exist.")
         try:
-            os.makedirs(OUTPUT_DIR)
+            os.makedirs(OUTPUT_DIR, exist_ok=True)
             logger.info(f"Created output directory at {OUTPUT_DIR}")
         except Exception as e:
             raise StartupValidationError(f"Could not create output directory {OUTPUT_DIR}: {e}")

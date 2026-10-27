@@ -35,6 +35,14 @@ jobs:
 
       - name: Pytest
         run: PYTHONPATH=. pytest tests/ -v
+        env:
+          INSTAGRAM_ACCESS_TOKEN: "mock_token"
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: "mock_id"
+          SUPABASE_URL: "https://mock.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: "mock_key"
+          GOOGLE_SERVICE_ACCOUNT_JSON: "{}"
+          SPREADSHEET_ID: "mock_id"
+          META_VERIFY_TOKEN: "mock_token"
 
       - name: Startup Validation
         run: python scheduler/scheduler.py --validate-only
