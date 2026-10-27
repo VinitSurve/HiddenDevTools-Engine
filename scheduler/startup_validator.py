@@ -44,8 +44,17 @@ def validate_startup(read_only: bool = False):
     # 5. Check database migrations
     try:
         if read_only:
-            validate_publishing_migrations()
-            logger.info("Database migrations verified (read-only mode).")
+            try:
+                validate_publishing_migrations()
+                logger.info("Database migrations verified (read-only mode).")
+            except ValueError as ve:
+                if "Pending unapplied migration" in str(ve):
+                    logger.info("Applying pending migrations to local database...")
+                    run_publishing_migrations()
+                    validate_publishing_migrations()
+                    logger.info("Database migrations verified.")
+                else:
+                    raise
         else:
             run_publishing_migrations()
             logger.info("Database migrations up-to-date.")

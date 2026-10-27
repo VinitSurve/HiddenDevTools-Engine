@@ -44,6 +44,11 @@ jobs:
           SPREADSHEET_ID: "mock_id"
           META_VERIFY_TOKEN: "mock_token"
 
+      - name: Run Migrations and Directory Setup
+        run: |
+          mkdir -p output logs
+          python -c "from features.publishing.migrations_runner import run_publishing_migrations; run_publishing_migrations()"
+
       - name: Startup Validation
         run: python scheduler/scheduler.py --validate-only
         env:
